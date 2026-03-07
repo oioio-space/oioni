@@ -28,10 +28,14 @@ flash-auto: ## Détecte la carte SD automatiquement et flash avec confirmation
 	@echo "Carte SD détectée : $(DETECTED_SD)"
 	@lsblk -d -o NAME,SIZE,MODEL $(DETECTED_SD) 2>/dev/null || true
 	@printf "Flasher gokrazy sur $(DETECTED_SD) ? [y/N] " && read confirm && [ "$$confirm" = "y" ]
+	@echo "Démontage des partitions de $(DETECTED_SD)..."
+	@sudo umount $(DETECTED_SD)p* $(DETECTED_SD)[0-9]* 2>/dev/null || true
 	$(GOK) overwrite --full $(DETECTED_SD)
 
 flash: ## Flash sur un device explicite  (usage: make flash DRIVE=/dev/sdX)
 	@if [ -z "$(DRIVE)" ]; then echo "Usage: make flash DRIVE=/dev/sdX"; exit 1; fi
+	@echo "Démontage des partitions de $(DRIVE)..."
+	@sudo umount $(DRIVE)p* $(DRIVE)[0-9]* 2>/dev/null || true
 	$(GOK) overwrite --full $(DRIVE)
 
 build: ## Vérifie la compilation arm64 sans device physique
