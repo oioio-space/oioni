@@ -2,7 +2,7 @@ PARENT_DIR := /home/oioio/Documents/GolandProjects/awesomeProject
 INSTANCE   := oioio
 GOK        := GOWORK=off gok --parent_dir $(PARENT_DIR) -i $(INSTANCE)
 SSH_KEY    := $(HOME)/.ssh/id_ed25519
-HOST       := oioio.local
+HOST       := 192.168.0.33
 
 # Détecte le premier disque amovible via /dev/disk/by-id (méthode gokrazy)
 DETECTED_SD := $(shell ls -l /dev/disk/by-id/ 2>/dev/null \
