@@ -5,6 +5,7 @@ use (
 	./oioio/builddir/awesomeProject
 	./oioio/builddir/github.com/gokrazy/breakglass
 	./oioio/builddir/github.com/gokrazy/fbstatus
+	./oioio/builddir/github.com/gokrazy/mkfs
 	./oioio/builddir/github.com/gokrazy/serial-busybox
 	./oioio/builddir/github.com/gokrazy/wifi
 )
