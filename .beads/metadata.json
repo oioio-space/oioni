@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "server",
+  "dolt_database": "awesomeProject",
+  "project_id": "fe19c354-522f-4cbd-a704-84a3263816eb"
+}
