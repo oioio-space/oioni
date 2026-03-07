@@ -6,7 +6,7 @@ HOST       := oioio.local
 
 # Détecte le premier disque amovible via /dev/disk/by-id (méthode gokrazy)
 DETECTED_SD := $(shell ls -l /dev/disk/by-id/ 2>/dev/null \
-	| awk '/usb-/ && !/-part[0-9]/ {print $$NF}' \
+	| awk '/(usb-|mmc-)/ && !/-part[0-9]/ {print $$NF}' \
 	| sed 's|../../||' \
 	| head -1 \
 	| xargs -I{} echo /dev/{})
@@ -16,7 +16,7 @@ help: ## Affiche cette aide
 
 list-sd: ## Liste les cartes SD/USB via /dev/disk/by-id
 	@echo "Périphériques amovibles détectés (/dev/disk/by-id) :"
-	@ls -l /dev/disk/by-id/ | awk '/usb-/ && !/-part[0-9]/ {print "  " $$NF " -> " $$(NF-2)}' | sed 's|../../||'
+	@ls -l /dev/disk/by-id/ | awk '/(usb-|mmc-)/ && !/-part[0-9]/ {print "  " $$NF " -> " $$(NF-2)}' | sed 's|../../||'
 
 flash-auto: ## Détecte la carte SD automatiquement et flash avec confirmation
 	@if [ -z "$(DETECTED_SD)" ]; then \
