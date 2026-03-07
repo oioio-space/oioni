@@ -2,3 +2,7 @@
 # Dolt database files (added by bd init)
 .dolt/
 *.db
+
+# gokrazy build artifacts
+oioio/builddir/
+*.gaf
