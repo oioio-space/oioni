@@ -12,6 +12,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -21,6 +22,7 @@ import (
 	"awesomeProject/storage"
 	"awesomeProject/usbgadget"
 	"awesomeProject/usbgadget/functions"
+	"github.com/spf13/afero"
 )
 
 func main() {
@@ -76,6 +78,7 @@ func main() {
 	sm := storage.New(
 		storage.WithOnMount(func(v *storage.Volume) {
 			log.Printf("storage: monté %s (%s) @ %s", v.Name, v.FSType, v.MountPath)
+			demoStorage(v)
 		}),
 		storage.WithOnUnmount(func(v *storage.Volume) {
 			log.Printf("storage: retiré %s", v.Name)
@@ -129,5 +132,39 @@ func main() {
 	log.Println("Arrêt du gadget USB...")
 	if err := g.Disable(); err != nil {
 		log.Printf("gadget.Disable: %v", err)
+	}
+}
+
+// demoStorage montre l'API afero sur un volume monté :
+// écriture d'un fichier horodaté, lecture, listage du répertoire.
+func demoStorage(v *storage.Volume) {
+	fs := v.FS
+
+	// 1. Écriture d'un fichier avec timestamp
+	bootFile := fmt.Sprintf("boot-%s.txt", time.Now().Format("2006-01-02T15-04-05"))
+	content := fmt.Sprintf("boot at %s on volume %s (%s)\n", time.Now().Format(time.RFC3339), v.Name, v.FSType)
+	if err := afero.WriteFile(fs, bootFile, []byte(content), 0644); err != nil {
+		log.Printf("storage[%s]: write %s: %v", v.Name, bootFile, err)
+	} else {
+		log.Printf("storage[%s]: écrit %s", v.Name, bootFile)
+	}
+
+	// 2. Relecture pour vérifier
+	data, err := afero.ReadFile(fs, bootFile)
+	if err != nil {
+		log.Printf("storage[%s]: read %s: %v", v.Name, bootFile, err)
+	} else {
+		log.Printf("storage[%s]: contenu → %s", v.Name, string(data))
+	}
+
+	// 3. Listage du répertoire racine du volume
+	entries, err := afero.ReadDir(fs, ".")
+	if err != nil {
+		log.Printf("storage[%s]: readdir: %v", v.Name, err)
+		return
+	}
+	log.Printf("storage[%s]: %d entrée(s) dans /", v.Name, len(entries))
+	for _, e := range entries {
+		log.Printf("storage[%s]:   %s (%d bytes)", v.Name, e.Name(), e.Size())
 	}
 }
