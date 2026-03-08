@@ -1,4 +1,13 @@
 // hello/main.go — démo composite USB gadget sur Pi Zero 2W (gokrazy)
+//
+// Contrainte matérielle : DWC2 BCM2835 (Pi Zero 2W) dispose de 7 endpoints
+// utilisables hors EP0. Budget par fonction :
+//   RNDIS        : 3 EP (bulk in/out + interrupt)
+//   ECM          : 3 EP (bulk in/out + interrupt)
+//   HID keyboard : 1 EP (interrupt in)
+// Total          : 7 EP — limite absolue du contrôleur.
+// ACM Serial et MassStorage nécessiteraient 3 EP et 2 EP supplémentaires,
+// ce qui dépasse la capacité → can't bind, err -19 (ENODEV).
 package main
 
 import (
@@ -13,29 +22,8 @@ import (
 	"awesomeProject/usbgadget/functions"
 )
 
-const diskImg = "/perm/disk.img"
-const diskSize = 64 << 20 // 64 MiB
-
-func ensureDiskImg() {
-	if _, err := os.Stat(diskImg); err == nil {
-		return
-	}
-	f, err := os.Create(diskImg)
-	if err != nil {
-		log.Printf("create %s: %v", diskImg, err)
-		return
-	}
-	if err := f.Truncate(diskSize); err != nil {
-		log.Printf("truncate %s: %v", diskImg, err)
-	}
-	_ = f.Close()
-	log.Printf("created %s (%d MiB sparse)", diskImg, diskSize>>20)
-}
-
 func main() {
 	log.SetFlags(log.Ltime)
-
-	ensureDiskImg()
 
 	// MACs stables → même interface réseau côté hôte à chaque boot,
 	// même bail DHCP si le routeur mémorise les MACs.
@@ -48,7 +36,6 @@ func main() {
 		functions.WithECMDevAddr("02:00:00:cc:dd:02"),
 	)
 	kbd := functions.Keyboard()
-	acm := functions.ACMSerial()
 
 	g, err := usbgadget.New(
 		usbgadget.WithName("geekhouse"),
@@ -58,10 +45,6 @@ func main() {
 		usbgadget.WithHID(rndis),
 		usbgadget.WithHID(ecm),
 		usbgadget.WithHID(kbd),
-		usbgadget.WithHID(acm),
-		usbgadget.WithMassStorage("/perm/disk.img",
-			functions.WithRemovable(true),
-		),
 	)
 	if err != nil {
 		log.Fatalf("usbgadget.New: %v", err)
@@ -76,7 +59,7 @@ func main() {
 		<-ch
 		return
 	}
-	log.Println("USB composite gadget actif : RNDIS + ECM + HID Keyboard + ACM Serial + MassStorage")
+	log.Println("USB composite gadget actif : RNDIS + ECM + HID Keyboard")
 
 	// Affiche les noms d'interfaces réseau côté Pi
 	if ifname, err := rndis.IfName(); err == nil {
@@ -85,11 +68,10 @@ func main() {
 	if ifname, err := ecm.IfName(); err == nil {
 		log.Printf("ECM   → interface Pi : %s", ifname)
 	}
-	log.Printf("ACM   → tty Pi : %s", acm.DevPath())
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Stats réseau RNDIS toutes les 30 secondes
+	// Stats réseau toutes les 30 secondes
 	go func() {
 		t := time.NewTicker(30 * time.Second)
 		defer t.Stop()
