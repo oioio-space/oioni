@@ -11,13 +11,21 @@ type midiFunc struct {
 	qLen     uint32
 }
 
+type MIDIOption func(*midiFunc)
+
+// WithMIDIBufLen sets the buffer length in bytes (default 256).
+func WithMIDIBufLen(n uint32) MIDIOption { return func(f *midiFunc) { f.bufLen = n } }
+
+// WithMIDIQLen sets the request queue length (default 32).
+func WithMIDIQLen(n uint32) MIDIOption { return func(f *midiFunc) { f.qLen = n } }
+
 // MIDI creates a USB MIDI function.
-func MIDI() Function {
-	return &midiFunc{
-		instance: "usb0",
-		bufLen:   256,
-		qLen:     32,
+func MIDI(opts ...MIDIOption) Function {
+	f := &midiFunc{instance: "usb0", bufLen: 256, qLen: 32}
+	for _, o := range opts {
+		o(f)
 	}
+	return f
 }
 
 func (f *midiFunc) TypeName() string     { return "midi" }

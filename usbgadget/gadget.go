@@ -70,9 +70,9 @@ func withFunction(f functions.Function) Option {
 	return func(g *Gadget) { g.funcs = append(g.funcs, f) }
 }
 
-func WithRNDIS() Option { return withFunction(functions.RNDIS()) }
-func WithECM() Option   { return withFunction(functions.ECM()) }
-func WithNCM() Option   { return withFunction(functions.NCM()) }
+func WithRNDIS(opts ...functions.RNDISOption) Option { return withFunction(functions.RNDIS(opts...)) }
+func WithECM(opts ...functions.ECMOption) Option     { return withFunction(functions.ECM(opts...)) }
+func WithNCM(opts ...functions.NCMOption) Option     { return withFunction(functions.NCM(opts...)) }
 
 func WithHID(f functions.Function) Option { return withFunction(f) }
 
@@ -81,7 +81,7 @@ func WithMassStorage(file string, opts ...functions.MassStorageOption) Option {
 }
 func WithACMSerial() Option { return withFunction(functions.ACMSerial()) }
 
-func WithMIDI() Option { return withFunction(functions.MIDI()) }
+func WithMIDI(opts ...functions.MIDIOption) Option { return withFunction(functions.MIDI(opts...)) }
 
 func (g *Gadget) Enable() error {
 	if os.Getuid() != 0 {
