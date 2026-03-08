@@ -43,7 +43,6 @@ RUN scripts/config \
     --module CONFIG_USB_F_MASS_STORAGE \
     --module CONFIG_USB_F_ACM \
     --module CONFIG_USB_U_SERIAL \
-    --set-val CONFIG_LOCALVERSION "" \
     --disable CONFIG_LOCALVERSION_AUTO
 
 # Prépare les headers
