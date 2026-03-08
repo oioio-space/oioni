@@ -22,11 +22,18 @@ RUN wget -q https://github.com/raspberrypi/linux/archive/refs/tags/stable_202509
 
 WORKDIR /build/kernel
 
-# Utilise le .config EXACT du kernel gokrazy (extrait via /proc/config.gz)
-# pour garantir que struct module a exactement la même taille qu'à runtime.
-COPY gokrazy-kernel.config .config
+# Reconstruit le .config exactement comme gokrazy :
+#   1. bcm2711_defconfig (base Raspberry Pi arm64)
+#   2. config.addendum.txt (ajouts gokrazy)
+#   3. olddefconfig (résout les dépendances)
+# Cette séquence produit le même config que le kernel.rpi package.
+RUN make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} bcm2711_defconfig
 
-# Active les modules USB gadget nécessaires (non présents dans le config gokrazy)
+COPY config.addendum.txt /tmp/config.addendum.txt
+RUN cat /tmp/config.addendum.txt >> .config && \
+    make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} olddefconfig
+
+# Active les modules USB gadget (gokrazy a USB_GADGET=y built-in, on passe en =m)
 RUN scripts/config \
     --module CONFIG_USB_GADGET \
     --module CONFIG_USB_LIBCOMPOSITE \
@@ -42,19 +49,19 @@ RUN scripts/config \
     --module CONFIG_USB_F_MASS_STORAGE \
     --module CONFIG_USB_F_ACM \
     --module CONFIG_USB_U_SERIAL \
-    --disable CONFIG_LOCALVERSION_AUTO \
-    --enable CONFIG_DYNAMIC_DEBUG \
-    --enable CONFIG_DYNAMIC_DEBUG_CORE \
-    --enable CONFIG_FTRACE_MCOUNT_RECORD
+    --disable CONFIG_LOCALVERSION_AUTO
 
-# Prépare les headers
+# Prépare les headers (syncconfig → autoconf.h)
 RUN make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} \
     -j$(nproc) modules_prepare
 
+# Diagnostic : vérifier que l'offset exit dans struct module est 0x4a8
+RUN grep -E "DYNAMIC_DEBUG|FTRACE|TRACING|KPROBES|BPF_EVENT|JUMP_LABEL|KALLSYMS|EVENT_TRACING" \
+    include/generated/autoconf.h | sort
+
 # Compile uniquement les modules USB gadget
-# KBUILD_MODPOST_WARN=1 : les symboles kernel (strcpy, kfree...) ne sont pas dans
-# Module.symvers lors d'un build partiel, mais ils sont bien présents dans le kernel
-# gokrazy au runtime — on accepte les warnings modpost.
+# KBUILD_MODPOST_WARN=1 : les symboles kernel ne sont pas dans Module.symvers
+# lors d'un build partiel, mais présents dans le kernel gokrazy au runtime.
 RUN make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} \
     -j$(nproc) \
     KBUILD_MODPOST_WARN=1 \
