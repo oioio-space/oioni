@@ -2,6 +2,10 @@ package usbgadget
 
 import (
 	"awesomeProject/usbgadget/functions"
+	"awesomeProject/usbgadget/modules"
+	"fmt"
+	"os"
+	"runtime"
 )
 
 type Gadget struct {
@@ -61,9 +65,43 @@ func WithUSBVersion(major, minor uint8) Option {
 	}
 }
 
-func (g *Gadget) Enable() error { return nil } // implémenté task 4
+// withFunction is the internal helper used by WithRNDIS, WithHID, etc.
+func withFunction(f functions.Function) Option {
+	return func(g *Gadget) { g.funcs = append(g.funcs, f) }
+}
 
-func (g *Gadget) Disable() error { return nil } // implémenté task 4
+func (g *Gadget) Enable() error {
+	if os.Getuid() != 0 {
+		return fmt.Errorf("must run as root to manage USB gadgets")
+	}
+	if runtime.GOARCH != "arm64" {
+		return fmt.Errorf("USB gadget only supported on arm64 (current: %s)", runtime.GOARCH)
+	}
+	kver, err := kernelVersion()
+	if err != nil {
+		return fmt.Errorf("kernelVersion: %w", err)
+	}
+	if err := modules.Load(kver); err != nil {
+		return fmt.Errorf("modules.Load: %w", err)
+	}
+	if err := mountConfigfs(); err != nil {
+		return fmt.Errorf("mountConfigfs: %w", err)
+	}
+	if err := g.setupConfigfs(); err != nil {
+		return fmt.Errorf("setupConfigfs: %w", err)
+	}
+	if err := g.bindUDC(); err != nil {
+		return fmt.Errorf("bindUDC: %w", err)
+	}
+	return nil
+}
+
+func (g *Gadget) Disable() error {
+	if err := g.unbindUDC(); err != nil {
+		return fmt.Errorf("unbindUDC: %w", err)
+	}
+	return g.teardownConfigfs()
+}
 
 func (g *Gadget) Reload() error {
 	if err := g.Disable(); err != nil {
