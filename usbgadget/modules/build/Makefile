@@ -11,6 +11,7 @@ build:
 		-f Dockerfile .
 	mkdir -p $(OUTDIR)
 	$(CONTAINER_RUNTIME) run --rm \
+		--userns=keep-id \
 		-v $(abspath $(OUTDIR)):/mnt \
 		$(IMAGE):$(KVER) \
 		sh -c "cp /out/$(KVER)/*.ko /mnt/"
