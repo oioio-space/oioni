@@ -45,24 +45,45 @@ func loadModule(kver, name string) error {
 	return insmod(data)
 }
 
-// insmod charge un module kernel depuis son contenu binaire via init_module syscall.
+// MODULE_INIT_IGNORE_MODVERSIONS bypasse la vérification CRC des symboles exportés.
+// Nécessaire car nous compilons sans Module.symvers du kernel gokrazy.
+const moduleInitIgnoreModversions = 1
+
+// insmod charge un module kernel depuis son contenu binaire.
+// Utilise finit_module(memfd, "", IGNORE_MODVERSIONS) pour contourner les CRC
+// manquants (compilation sans Module.symvers du kernel gokrazy).
 func insmod(data []byte) error {
 	if len(data) == 0 {
 		return nil
 	}
-	params := ""
-	paramsPtr, err := syscall.BytePtrFromString(params)
+
+	// Crée un fichier anonyme en mémoire (pas d'accès disque requis).
+	namePtr, err := syscall.BytePtrFromString("ko")
 	if err != nil {
 		return err
 	}
-	_, _, errno := syscall.Syscall(
-		syscall.SYS_INIT_MODULE,
-		uintptr(unsafe.Pointer(&data[0])),
-		uintptr(len(data)),
+	fd, _, errno := syscall.Syscall(syscall.SYS_MEMFD_CREATE, uintptr(unsafe.Pointer(namePtr)), 0, 0)
+	if errno != 0 {
+		return fmt.Errorf("memfd_create: %w", errno)
+	}
+	defer syscall.Close(int(fd))
+
+	if _, err := syscall.Write(int(fd), data); err != nil {
+		return fmt.Errorf("write module data: %w", err)
+	}
+
+	paramsPtr, err := syscall.BytePtrFromString("")
+	if err != nil {
+		return err
+	}
+	_, _, errno = syscall.Syscall(
+		syscall.SYS_FINIT_MODULE,
+		fd,
 		uintptr(unsafe.Pointer(paramsPtr)),
+		moduleInitIgnoreModversions,
 	)
 	if errno != 0 && errno != syscall.EEXIST {
-		return fmt.Errorf("init_module: %w", errno)
+		return fmt.Errorf("finit_module: %w", errno)
 	}
 	return nil
 }
