@@ -2,9 +2,10 @@
 package modules
 
 import (
+	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
+	"io/fs"
+	"path"
 	"syscall"
 	"unsafe"
 )
@@ -20,6 +21,7 @@ func Load(kver string) error {
 		"usb_f_ncm",
 		"usb_f_hid",
 		"usb_f_mass_storage",
+		"u_serial",
 		"usb_f_acm",
 	}
 	for _, name := range deps {
@@ -31,9 +33,9 @@ func Load(kver string) error {
 }
 
 func loadModule(kver, name string) error {
-	src := filepath.Join(kver, name+".ko")
+	src := path.Join(kver, name+".ko")
 	data, err := koFS.ReadFile(src)
-	if os.IsNotExist(err) {
+	if errors.Is(err, fs.ErrNotExist) {
 		// .ko absent pour cette version kernel — skip silencieux
 		return nil
 	}
