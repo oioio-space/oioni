@@ -14,9 +14,11 @@ ARG CROSS_COMPILE=aarch64-linux-gnu-
 
 WORKDIR /build
 
-# Télécharge les sources du kernel Raspberry Pi
-RUN git clone --depth=1 --branch rpi-6.12.y \
-    https://github.com/raspberrypi/linux.git kernel
+# Télécharge les sources du kernel Raspberry Pi — tag exact utilisé par gokrazy kernel.rpi
+RUN wget -q https://github.com/raspberrypi/linux/archive/refs/tags/stable_20250916.tar.gz \
+    && tar xf stable_20250916.tar.gz \
+    && mv linux-stable_20250916 kernel \
+    && rm stable_20250916.tar.gz
 
 WORKDIR /build/kernel
 
