@@ -46,9 +46,8 @@ func loadModule(kver, name string) error {
 	return insmod(data)
 }
 
-// MODULE_INIT_IGNORE_MODVERSIONS bypasse la vérification CRC des symboles exportés.
-// Nécessaire car nous compilons sans Module.symvers du kernel gokrazy.
-const moduleInitIgnoreModversions = 1
+// finit_module flags : bypass CRC + vermagic (modules compilés sans Module.symvers).
+const moduleInitIgnoreModversions = 1 | 2 // IGNORE_MODVERSIONS | IGNORE_VERMAGIC
 
 // insmod charge un module kernel depuis son contenu binaire.
 // Utilise finit_module(fd, "", IGNORE_MODVERSIONS) pour contourner les CRC
