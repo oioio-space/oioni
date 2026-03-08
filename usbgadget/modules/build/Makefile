@@ -1,15 +1,16 @@
 # usbgadget/modules/build/Makefile
-KVER   ?= 6.12.47-v8
-OUTDIR := ../$(KVER)
-IMAGE  := usbgadget-modules-builder
+KVER              ?= 6.12.47-v8
+OUTDIR            := ../$(KVER)
+IMAGE             := usbgadget-modules-builder
+CONTAINER_RUNTIME ?= $(shell which podman 2>/dev/null || echo docker)
 
 build:
-	docker build \
+	$(CONTAINER_RUNTIME) build \
 		--build-arg KVER=$(KVER) \
 		-t $(IMAGE):$(KVER) \
 		-f Dockerfile .
 	mkdir -p $(OUTDIR)
-	docker run --rm \
+	$(CONTAINER_RUNTIME) run --rm \
 		-v $(abspath $(OUTDIR)):/mnt \
 		$(IMAGE):$(KVER) \
 		sh -c "cp /out/$(KVER)/*.ko /mnt/"
