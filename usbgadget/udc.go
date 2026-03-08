@@ -35,11 +35,26 @@ func (g *Gadget) bindUDC() error {
 	for i := range 5 {
 		err = os.WriteFile(udcFile, []byte(udc), 0644)
 		if err == nil || !errors.Is(err, syscall.EBUSY) {
-			return err
+			break
 		}
 		time.Sleep(time.Duration(i+1) * 500 * time.Millisecond)
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	// The write may succeed at the syscall level while the in-kernel bind
+	// fails silently (e.g. not enough USB endpoints for the requested
+	// functions). When that happens the UDC file resets to empty.
+	// Read it back to detect this case and return a clear error.
+	content, err := os.ReadFile(udcFile)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(string(content)) == "" {
+		return fmt.Errorf("UDC bind failed: gadget did not attach to %s "+
+			"(too many functions for the controller's endpoint budget?)", udc)
+	}
+	return nil
 }
 
 func (g *Gadget) unbindUDC() error {
