@@ -70,6 +70,19 @@ func withFunction(f functions.Function) Option {
 	return func(g *Gadget) { g.funcs = append(g.funcs, f) }
 }
 
+func WithRNDIS() Option { return withFunction(functions.RNDIS()) }
+func WithECM() Option   { return withFunction(functions.ECM()) }
+func WithNCM() Option   { return withFunction(functions.NCM()) }
+
+func WithHID(f functions.Function) Option { return withFunction(f) }
+
+func WithMassStorage(file string, opts ...functions.MassStorageOption) Option {
+	return withFunction(functions.MassStorage(file, opts...))
+}
+func WithACMSerial() Option { return withFunction(functions.ACMSerial()) }
+
+func WithMIDI() Option { return withFunction(functions.MIDI()) }
+
 func (g *Gadget) Enable() error {
 	if os.Getuid() != 0 {
 		return fmt.Errorf("must run as root to manage USB gadgets")
