@@ -70,18 +70,45 @@ func withFunction(f functions.Function) Option {
 	return func(g *Gadget) { g.funcs = append(g.funcs, f) }
 }
 
-func WithRNDIS(opts ...functions.RNDISOption) Option { return withFunction(functions.RNDIS(opts...)) }
-func WithECM(opts ...functions.ECMOption) Option     { return withFunction(functions.ECM(opts...)) }
-func WithNCM(opts ...functions.NCMOption) Option     { return withFunction(functions.NCM(opts...)) }
+// — Network functions ——————————————————————————————————————————————
 
+func WithRNDIS(opts ...functions.RNDISOption) Option   { return withFunction(functions.RNDIS(opts...)) }
+func WithECM(opts ...functions.ECMOption) Option       { return withFunction(functions.ECM(opts...)) }
+func WithNCM(opts ...functions.NCMOption) Option       { return withFunction(functions.NCM(opts...)) }
+func WithEEM(opts ...functions.EEMOption) Option       { return withFunction(functions.EEM(opts...)) }
+func WithSubset(opts ...functions.SubsetOption) Option { return withFunction(functions.Subset(opts...)) }
+
+// — HID functions ——————————————————————————————————————————————————
+
+// WithHID adds any HID function (use functions.Keyboard(), functions.Mouse(), etc.).
 func WithHID(f functions.Function) Option { return withFunction(f) }
+
+// — Storage ————————————————————————————————————————————————————————
 
 func WithMassStorage(file string, opts ...functions.MassStorageOption) Option {
 	return withFunction(functions.MassStorage(file, opts...))
 }
-func WithACMSerial() Option { return withFunction(functions.ACMSerial()) }
 
-func WithMIDI(opts ...functions.MIDIOption) Option { return withFunction(functions.MIDI(opts...)) }
+// — Serial functions ————————————————————————————————————————————————
+
+func WithACMSerial() Option { return withFunction(functions.ACMSerial()) }
+func WithSerial() Option    { return withFunction(functions.Serial()) }
+func WithOBEX() Option      { return withFunction(functions.OBEX()) }
+
+// — Audio / MIDI ——————————————————————————————————————————————————
+
+func WithMIDI(opts ...functions.MIDIOption) Option     { return withFunction(functions.MIDI(opts...)) }
+func WithUAC1(opts ...functions.UAC1Option) Option     { return withFunction(functions.UAC1(opts...)) }
+func WithUAC2(opts ...functions.UAC2Option) Option     { return withFunction(functions.UAC2(opts...)) }
+
+// — Printer / Loopback ————————————————————————————————————————————
+
+func WithPrinter(opts ...functions.PrinterOption) Option {
+	return withFunction(functions.Printer(opts...))
+}
+func WithLoopback(opts ...functions.LoopbackOption) Option {
+	return withFunction(functions.Loopback(opts...))
+}
 
 func (g *Gadget) Enable() error {
 	if os.Getuid() != 0 {

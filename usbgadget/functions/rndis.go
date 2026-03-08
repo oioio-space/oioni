@@ -5,7 +5,7 @@ import (
 	"os"
 )
 
-type rndisFunc struct {
+type RNDISFunc struct {
 	instance  string
 	devAddr   string
 	hostAddr  string
@@ -13,42 +13,42 @@ type rndisFunc struct {
 	configDir string
 }
 
-type RNDISOption func(*rndisFunc)
+type RNDISOption func(*RNDISFunc)
 
 // WithRNDISDevAddr sets the MAC address of the gadget-side network interface.
 func WithRNDISDevAddr(mac string) RNDISOption {
-	return func(f *rndisFunc) { f.devAddr = mac }
+	return func(f *RNDISFunc) { f.devAddr = mac }
 }
 
 // WithRNDISHostAddr sets the MAC address seen by the host.
 func WithRNDISHostAddr(mac string) RNDISOption {
-	return func(f *rndisFunc) { f.hostAddr = mac }
+	return func(f *RNDISFunc) { f.hostAddr = mac }
 }
 
 // WithRNDISQMult sets the TX queue multiplier for high-speed USB (default 5).
 func WithRNDISQMult(n uint8) RNDISOption {
-	return func(f *rndisFunc) { f.qmult = n }
+	return func(f *RNDISFunc) { f.qmult = n }
 }
 
 // RNDIS creates a RNDIS network function (Windows USB network).
 // Must be the first function in the composite for Windows compatibility.
-func RNDIS(opts ...RNDISOption) Function {
-	f := &rndisFunc{instance: "usb0"}
+func RNDIS(opts ...RNDISOption) *RNDISFunc {
+	f := &RNDISFunc{instance: "usb0"}
 	for _, o := range opts {
 		o(f)
 	}
 	return f
 }
 
-func (f *rndisFunc) TypeName() string     { return "rndis" }
-func (f *rndisFunc) InstanceName() string { return f.instance }
+func (f *RNDISFunc) TypeName() string     { return "rndis" }
+func (f *RNDISFunc) InstanceName() string { return f.instance }
 
 // IfName returns the kernel network interface name on the gadget side (e.g. "usb0").
 // Only valid after the gadget is enabled.
-func (f *rndisFunc) IfName() (string, error) { return readIfName(f.configDir) }
+func (f *RNDISFunc) IfName() (string, error) { return readIfName(f.configDir) }
 
 // ReadStats returns the current network counters for this interface.
-func (f *rndisFunc) ReadStats() (NetStats, error) {
+func (f *RNDISFunc) ReadStats() (NetStats, error) {
 	ifname, err := f.IfName()
 	if err != nil {
 		return NetStats{}, err
@@ -56,7 +56,7 @@ func (f *rndisFunc) ReadStats() (NetStats, error) {
 	return readNetStats(ifname)
 }
 
-func (f *rndisFunc) Configure(dir string) error {
+func (f *RNDISFunc) Configure(dir string) error {
 	f.configDir = dir
 	if f.devAddr != "" {
 		if err := os.WriteFile(fmt.Sprintf("%s/dev_addr", dir), []byte(f.devAddr+"\n"), 0644); err != nil {

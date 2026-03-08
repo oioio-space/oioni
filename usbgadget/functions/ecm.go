@@ -5,7 +5,7 @@ import (
 	"os"
 )
 
-type ecmFunc struct {
+type ECMFunc struct {
 	instance  string
 	devAddr   string
 	hostAddr  string
@@ -13,40 +13,40 @@ type ecmFunc struct {
 	configDir string
 }
 
-type ECMOption func(*ecmFunc)
+type ECMOption func(*ECMFunc)
 
 // WithECMDevAddr sets the MAC address of the gadget-side network interface.
 func WithECMDevAddr(mac string) ECMOption {
-	return func(f *ecmFunc) { f.devAddr = mac }
+	return func(f *ECMFunc) { f.devAddr = mac }
 }
 
 // WithECMHostAddr sets the MAC address seen by the host.
 func WithECMHostAddr(mac string) ECMOption {
-	return func(f *ecmFunc) { f.hostAddr = mac }
+	return func(f *ECMFunc) { f.hostAddr = mac }
 }
 
 // WithECMQMult sets the TX queue multiplier for high-speed USB (default 5).
 func WithECMQMult(n uint8) ECMOption {
-	return func(f *ecmFunc) { f.qmult = n }
+	return func(f *ECMFunc) { f.qmult = n }
 }
 
 // ECM creates an ECM network function (Linux/macOS USB network).
-func ECM(opts ...ECMOption) Function {
-	f := &ecmFunc{instance: "usb1"}
+func ECM(opts ...ECMOption) *ECMFunc {
+	f := &ECMFunc{instance: "usb1"}
 	for _, o := range opts {
 		o(f)
 	}
 	return f
 }
 
-func (f *ecmFunc) TypeName() string     { return "ecm" }
-func (f *ecmFunc) InstanceName() string { return f.instance }
+func (f *ECMFunc) TypeName() string     { return "ecm" }
+func (f *ECMFunc) InstanceName() string { return f.instance }
 
 // IfName returns the kernel network interface name on the gadget side.
-func (f *ecmFunc) IfName() (string, error) { return readIfName(f.configDir) }
+func (f *ECMFunc) IfName() (string, error) { return readIfName(f.configDir) }
 
 // ReadStats returns the current network counters for this interface.
-func (f *ecmFunc) ReadStats() (NetStats, error) {
+func (f *ECMFunc) ReadStats() (NetStats, error) {
 	ifname, err := f.IfName()
 	if err != nil {
 		return NetStats{}, err
@@ -54,7 +54,7 @@ func (f *ecmFunc) ReadStats() (NetStats, error) {
 	return readNetStats(ifname)
 }
 
-func (f *ecmFunc) Configure(dir string) error {
+func (f *ECMFunc) Configure(dir string) error {
 	f.configDir = dir
 	if f.devAddr != "" {
 		if err := os.WriteFile(fmt.Sprintf("%s/dev_addr", dir), []byte(f.devAddr+"\n"), 0644); err != nil {

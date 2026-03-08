@@ -38,10 +38,14 @@ RUN scripts/config \
     --module CONFIG_USB_GADGET \
     --module CONFIG_USB_LIBCOMPOSITE \
     --module CONFIG_USB_ETH \
+    --module CONFIG_USB_F_EEM \
+    --module CONFIG_USB_F_SUBSET \
     --module CONFIG_USB_G_NCM \
     --module CONFIG_USB_F_HID \
     --module CONFIG_USB_MASS_STORAGE \
     --module CONFIG_USB_G_SERIAL \
+    --module CONFIG_USB_F_SERIAL \
+    --module CONFIG_USB_F_OBEX \
     --module CONFIG_USB_F_MIDI \
     --module CONFIG_USB_U_ETHER \
     --module CONFIG_USB_F_RNDIS \
@@ -49,6 +53,10 @@ RUN scripts/config \
     --module CONFIG_USB_F_MASS_STORAGE \
     --module CONFIG_USB_F_ACM \
     --module CONFIG_USB_U_SERIAL \
+    --module CONFIG_USB_F_UAC1 \
+    --module CONFIG_USB_F_UAC2 \
+    --module CONFIG_USB_F_PRINTER \
+    --module CONFIG_USB_F_SS_LB \
     --disable CONFIG_LOCALVERSION_AUTO
 
 # Prépare les headers (syncconfig → autoconf.h)
@@ -76,11 +84,19 @@ RUN mkdir -p /out/${KVER} && \
         -o -name "usb_f_rndis.ko" \
         -o -name "usb_f_ecm.ko" \
         -o -name "usb_f_ncm.ko" \
+        -o -name "usb_f_eem.ko" \
+        -o -name "usb_f_subset.ko" \
         -o -name "usb_f_hid.ko" \
         -o -name "usb_f_mass_storage.ko" \
         -o -name "usb_f_acm.ko" \
         -o -name "u_serial.ko" \
+        -o -name "usb_f_serial.ko" \
+        -o -name "usb_f_obex.ko" \
         -o -name "usb_f_midi.ko" \
+        -o -name "usb_f_uac1.ko" \
+        -o -name "usb_f_uac2.ko" \
+        -o -name "usb_f_printer.ko" \
+        -o -name "usb_f_ss_lb.ko" \
         \) \
     -exec cp {} /out/${KVER}/ \;
 

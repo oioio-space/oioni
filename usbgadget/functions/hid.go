@@ -9,7 +9,7 @@ import (
 
 var hidCounter atomic.Int32
 
-type hidFunc struct {
+type HIDFunc struct {
 	instance   string
 	protocol   uint8
 	subclass   uint8
@@ -18,11 +18,11 @@ type hidFunc struct {
 	devNum     int32 // index assigned at creation → /dev/hidgN
 }
 
-type HIDOption func(*hidFunc)
+type HIDOption func(*HIDFunc)
 
-func newHID(opts ...HIDOption) *hidFunc {
+func newHID(opts ...HIDOption) *HIDFunc {
 	n := hidCounter.Add(1) - 1
-	f := &hidFunc{instance: fmt.Sprintf("usb%d", n), devNum: n}
+	f := &HIDFunc{instance: fmt.Sprintf("usb%d", n), devNum: n}
 	for _, o := range opts {
 		o(f)
 	}
@@ -31,7 +31,7 @@ func newHID(opts ...HIDOption) *hidFunc {
 
 // DevPath returns the kernel hidg device path (e.g. /dev/hidg0).
 // Use this to write HID input reports or read LED output reports.
-func (f *hidFunc) DevPath() string {
+func (f *HIDFunc) DevPath() string {
 	return fmt.Sprintf("/dev/hidg%d", f.devNum)
 }
 
@@ -47,7 +47,7 @@ type LEDState struct {
 // ReadLEDs returns a channel that delivers LED state changes sent by the host
 // (e.g. when the user presses NumLock). Blocks until ctx is cancelled.
 // Only meaningful for Keyboard HID functions (protocol=1).
-func (f *hidFunc) ReadLEDs(ctx context.Context) (<-chan LEDState, error) {
+func (f *HIDFunc) ReadLEDs(ctx context.Context) (<-chan LEDState, error) {
 	dev, err := os.OpenFile(f.DevPath(), os.O_RDWR, 0)
 	if err != nil {
 		return nil, fmt.Errorf("open %s: %w", f.DevPath(), err)
@@ -81,13 +81,13 @@ func (f *hidFunc) ReadLEDs(ctx context.Context) (<-chan LEDState, error) {
 // WriteReport writes a raw HID input report to the host.
 // For Keyboard: [modifier, 0x00, key1, key2, key3, key4, key5, key6]
 // For Mouse:    [buttons, deltaX, deltaY, wheel]
-func (f *hidFunc) WriteReport(report []byte) error {
+func (f *HIDFunc) WriteReport(report []byte) error {
 	return os.WriteFile(f.DevPath(), report, 0)
 }
 
 
 // Keyboard creates a standard HID boot keyboard.
-func Keyboard(opts ...HIDOption) Function {
+func Keyboard(opts ...HIDOption) *HIDFunc {
 	f := newHID(opts...)
 	f.protocol = 1
 	f.subclass = 1
@@ -114,7 +114,7 @@ func Keyboard(opts ...HIDOption) Function {
 }
 
 // Mouse creates a standard HID boot mouse.
-func Mouse(opts ...HIDOption) Function {
+func Mouse(opts ...HIDOption) *HIDFunc {
 	f := newHID(opts...)
 	f.protocol = 2
 	f.subclass = 1
@@ -142,9 +142,9 @@ func Mouse(opts ...HIDOption) Function {
 	return f
 }
 
-func (f *hidFunc) TypeName() string     { return "hid" }
-func (f *hidFunc) InstanceName() string { return f.instance }
-func (f *hidFunc) Configure(dir string) error {
+func (f *HIDFunc) TypeName() string     { return "hid" }
+func (f *HIDFunc) InstanceName() string { return f.instance }
+func (f *HIDFunc) Configure(dir string) error {
 	write := func(name string, val uint64) error {
 		return os.WriteFile(fmt.Sprintf("%s/%s", dir, name),
 			[]byte(fmt.Sprintf("%d\n", val)), 0644)

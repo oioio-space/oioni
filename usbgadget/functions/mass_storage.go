@@ -5,7 +5,7 @@ import (
 	"os"
 )
 
-type massStorageFunc struct {
+type MassStorageFunc struct {
 	instance  string
 	file      string
 	cdrom     bool
@@ -14,16 +14,16 @@ type massStorageFunc struct {
 }
 
 // MassStorageOption configures a MassStorage function.
-type MassStorageOption func(*massStorageFunc)
+type MassStorageOption func(*MassStorageFunc)
 
-func WithCDROM(v bool) MassStorageOption    { return func(f *massStorageFunc) { f.cdrom = v } }
-func WithReadOnly(v bool) MassStorageOption  { return func(f *massStorageFunc) { f.readOnly = v } }
-func WithRemovable(v bool) MassStorageOption { return func(f *massStorageFunc) { f.removable = v } }
+func WithCDROM(v bool) MassStorageOption    { return func(f *MassStorageFunc) { f.cdrom = v } }
+func WithReadOnly(v bool) MassStorageOption  { return func(f *MassStorageFunc) { f.readOnly = v } }
+func WithRemovable(v bool) MassStorageOption { return func(f *MassStorageFunc) { f.removable = v } }
 
 // MassStorage creates a USB Mass Storage function.
 // file is the path to the disk image (e.g. /perm/disk.img).
-func MassStorage(file string, opts ...MassStorageOption) Function {
-	f := &massStorageFunc{
+func MassStorage(file string, opts ...MassStorageOption) *MassStorageFunc {
+	f := &MassStorageFunc{
 		instance:  "usb0",
 		file:      file,
 		removable: true,
@@ -34,9 +34,9 @@ func MassStorage(file string, opts ...MassStorageOption) Function {
 	return f
 }
 
-func (f *massStorageFunc) TypeName() string     { return "mass_storage" }
-func (f *massStorageFunc) InstanceName() string { return f.instance }
-func (f *massStorageFunc) Configure(dir string) error {
+func (f *MassStorageFunc) TypeName() string     { return "mass_storage" }
+func (f *MassStorageFunc) InstanceName() string { return f.instance }
+func (f *MassStorageFunc) Configure(dir string) error {
 	boolStr := func(v bool) string {
 		if v {
 			return "1\n"

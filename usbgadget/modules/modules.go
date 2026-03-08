@@ -14,15 +14,31 @@ import (
 // Les .ko sont extraits de l'embed FS et chargés via insmod (init_module syscall).
 func Load(kver string) error {
 	deps := []string{
+		// Core
 		"libcomposite",
+		// Network
 		"u_ether",
 		"usb_f_rndis",
 		"usb_f_ecm",
 		"usb_f_ncm",
+		"usb_f_eem",    // EEM — silently skipped if .ko absent
+		"usb_f_subset", // CDC Subset — silently skipped if .ko absent
+		// HID
 		"usb_f_hid",
+		// Storage
 		"usb_f_mass_storage",
+		// Serial
 		"u_serial",
 		"usb_f_acm",
+		"usb_f_serial", // GSER — silently skipped if .ko absent
+		"usb_f_obex",   // OBEX — silently skipped if .ko absent
+		// Audio / MIDI
+		"usb_f_uac1",   // silently skipped if .ko absent
+		"usb_f_uac2",   // silently skipped if .ko absent
+		"usb_f_midi",
+		// Misc
+		"usb_f_printer", // silently skipped if .ko absent
+		"usb_f_ss_lb",   // loopback — silently skipped if .ko absent
 	}
 	for _, name := range deps {
 		if err := loadModule(kver, name); err != nil {
