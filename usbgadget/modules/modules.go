@@ -71,6 +71,10 @@ func insmod(data []byte) error {
 	if _, err := syscall.Write(int(fd), data); err != nil {
 		return fmt.Errorf("write module data: %w", err)
 	}
+	// Rewind: finit_module lit depuis la position courante du fd.
+	if _, err := syscall.Seek(int(fd), 0, 0); err != nil {
+		return fmt.Errorf("seek: %w", err)
+	}
 
 	paramsPtr, err := syscall.BytePtrFromString("")
 	if err != nil {
