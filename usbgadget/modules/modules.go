@@ -63,15 +63,22 @@ func insmod(data []byte) error {
 	if err != nil {
 		return fmt.Errorf("create temp: %w", err)
 	}
-	defer os.Remove(f.Name())
-	defer f.Close()
+	tmpPath := f.Name()
+	defer os.Remove(tmpPath)
 
 	if _, err := f.Write(data); err != nil {
+		f.Close()
 		return fmt.Errorf("write module: %w", err)
 	}
-	if _, err := f.Seek(0, 0); err != nil {
-		return fmt.Errorf("seek: %w", err)
+	// Fermer le fd d'écriture : finit_module refuse un fd ouvert en écriture (ETXTBSY).
+	f.Close()
+
+	// Rouvrir en lecture seule pour finit_module.
+	ro, err := os.Open(tmpPath)
+	if err != nil {
+		return fmt.Errorf("open ro: %w", err)
 	}
+	defer ro.Close()
 
 	paramsPtr, err := syscall.BytePtrFromString("")
 	if err != nil {
@@ -79,7 +86,7 @@ func insmod(data []byte) error {
 	}
 	_, _, errno := syscall.Syscall(
 		syscall.SYS_FINIT_MODULE,
-		f.Fd(),
+		ro.Fd(),
 		uintptr(unsafe.Pointer(paramsPtr)),
 		moduleInitIgnoreModversions,
 	)
