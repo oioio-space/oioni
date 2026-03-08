@@ -2,10 +2,13 @@
 package usbgadget
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
+	"time"
 )
 
 const udcPath = "/sys/class/udc"
@@ -27,7 +30,16 @@ func (g *Gadget) bindUDC() error {
 		return err
 	}
 	udcFile := filepath.Join(g.gadgetDir(), "UDC")
-	return os.WriteFile(udcFile, []byte(udc), 0644)
+	// DWC2 can return EBUSY for a brief window after boot while the UDC
+	// finishes initialising in peripheral mode. Retry up to 5 times.
+	for i := range 5 {
+		err = os.WriteFile(udcFile, []byte(udc), 0644)
+		if err == nil || !errors.Is(err, syscall.EBUSY) {
+			return err
+		}
+		time.Sleep(time.Duration(i+1) * 500 * time.Millisecond)
+	}
+	return err
 }
 
 func (g *Gadget) unbindUDC() error {
