@@ -42,9 +42,9 @@ func main() {
 		usbgadget.WithVendorID(0x1d6b, 0x0104),
 		usbgadget.WithStrings("0x409", "GeekHouse", "oioio Composite", "pi0001"),
 		// RNDIS en premier — Windows identifie le composite gadget correctement
-		usbgadget.WithHID(rndis),
-		usbgadget.WithHID(ecm),
-		usbgadget.WithHID(kbd),
+		usbgadget.WithFunc(rndis),
+		usbgadget.WithFunc(ecm),
+		usbgadget.WithFunc(kbd),
 	)
 	if err != nil {
 		log.Fatalf("usbgadget.New: %v", err)

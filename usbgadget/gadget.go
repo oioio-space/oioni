@@ -65,10 +65,19 @@ func WithUSBVersion(major, minor uint8) Option {
 	}
 }
 
-// withFunction is the internal helper used by WithRNDIS, WithHID, etc.
 func withFunction(f functions.Function) Option {
 	return func(g *Gadget) { g.funcs = append(g.funcs, f) }
 }
+
+// — Generic ————————————————————————————————————————————————————————
+
+// WithFunc adds a pre-created function to the gadget. Use this when you need
+// to retain a reference to call methods on it (IfName, ReadStats, ReadLEDs, …).
+//
+//	rndis := functions.RNDIS(functions.WithRNDISHostAddr("…"))
+//	g, _ := usbgadget.New(usbgadget.WithFunc(rndis))
+//	// later: rndis.ReadStats()
+func WithFunc(f functions.Function) Option { return withFunction(f) }
 
 // — Network functions ——————————————————————————————————————————————
 
@@ -77,11 +86,6 @@ func WithECM(opts ...functions.ECMOption) Option       { return withFunction(fun
 func WithNCM(opts ...functions.NCMOption) Option       { return withFunction(functions.NCM(opts...)) }
 func WithEEM(opts ...functions.EEMOption) Option       { return withFunction(functions.EEM(opts...)) }
 func WithSubset(opts ...functions.SubsetOption) Option { return withFunction(functions.Subset(opts...)) }
-
-// — HID functions ——————————————————————————————————————————————————
-
-// WithHID adds any HID function (use functions.Keyboard(), functions.Mouse(), etc.).
-func WithHID(f functions.Function) Option { return withFunction(f) }
 
 // — Storage ————————————————————————————————————————————————————————
 

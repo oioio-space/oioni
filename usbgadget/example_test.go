@@ -27,8 +27,8 @@ func ExampleNew_rndisEcm() {
 		usbgadget.WithName("netgadget"),
 		usbgadget.WithVendorID(0x1d6b, 0x0104),
 		usbgadget.WithStrings("0x409", "ACME Corp", "USB Network", "net001"),
-		usbgadget.WithHID(rndis), // WithHID accepts any Function
-		usbgadget.WithHID(ecm),
+		usbgadget.WithFunc(rndis),
+		usbgadget.WithFunc(ecm),
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -55,7 +55,7 @@ func ExampleNew_keyboard() {
 		usbgadget.WithName("kbd"),
 		usbgadget.WithVendorID(0x1d6b, 0x0104),
 		usbgadget.WithStrings("0x409", "ACME", "USB Keyboard", "kbd001"),
-		usbgadget.WithHID(kbd),
+		usbgadget.WithFunc(kbd),
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -91,7 +91,7 @@ func ExampleNew_mouse() {
 		usbgadget.WithName("mouse"),
 		usbgadget.WithVendorID(0x1d6b, 0x0104),
 		usbgadget.WithStrings("0x409", "ACME", "USB Mouse", "mse001"),
-		usbgadget.WithHID(mouse),
+		usbgadget.WithFunc(mouse),
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -117,7 +117,7 @@ func ExampleNew_acmSerial() {
 		usbgadget.WithName("serial"),
 		usbgadget.WithVendorID(0x1d6b, 0x0104),
 		usbgadget.WithStrings("0x409", "ACME", "USB Serial", "ser001"),
-		usbgadget.WithHID(acm),
+		usbgadget.WithFunc(acm),
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -149,7 +149,7 @@ func ExampleNew_serial() {
 		usbgadget.WithName("gser"),
 		usbgadget.WithVendorID(0x1d6b, 0x0104),
 		usbgadget.WithStrings("0x409", "ACME", "USB GSER", "gser001"),
-		usbgadget.WithHID(gser),
+		usbgadget.WithFunc(gser),
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -351,7 +351,7 @@ func ExampleNew_eem() {
 		usbgadget.WithName("eem"),
 		usbgadget.WithVendorID(0x1d6b, 0x0104),
 		usbgadget.WithStrings("0x409", "ACME", "USB EEM", "eem001"),
-		usbgadget.WithHID(eem),
+		usbgadget.WithFunc(eem),
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -374,7 +374,7 @@ func ExampleNew_obex() {
 		usbgadget.WithName("obex"),
 		usbgadget.WithVendorID(0x1d6b, 0x0104),
 		usbgadget.WithStrings("0x409", "ACME", "USB OBEX", "obex001"),
-		usbgadget.WithHID(obex),
+		usbgadget.WithFunc(obex),
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -400,15 +400,15 @@ func ExampleNew_composite() {
 		usbgadget.WithVendorID(0x1d6b, 0x0104),
 		usbgadget.WithStrings("0x409", "ACME", "USB Composite", "comp001"),
 		// Network — RNDIS must be first for Windows
-		usbgadget.WithHID(rndis),
+		usbgadget.WithFunc(rndis),
 		usbgadget.WithECM(),
 		// Input
-		usbgadget.WithHID(kbd),
-		usbgadget.WithHID(functions.Mouse()),
+		usbgadget.WithFunc(kbd),
+		usbgadget.WithFunc(functions.Mouse()),
 		// Storage
 		usbgadget.WithMassStorage("/perm/disk.img"),
 		// Serial console
-		usbgadget.WithHID(acm),
+		usbgadget.WithFunc(acm),
 		// Audio
 		usbgadget.WithUAC2(),
 	)

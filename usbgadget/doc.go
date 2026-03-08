@@ -21,7 +21,7 @@
 //	    usbgadget.WithVendorID(0x1d6b, 0x0104),
 //	    usbgadget.WithStrings("0x409", "ACME", "My Device", "001"),
 //	    usbgadget.WithRNDIS(),
-//	    usbgadget.WithHID(functions.Keyboard()),
+//	    usbgadget.WithFunc(functions.Keyboard()),
 //	)
 //	if err := g.Enable(); err != nil {
 //	    log.Fatal(err)
