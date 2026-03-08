@@ -42,7 +42,7 @@ RUN scripts/config \
     --module CONFIG_USB_F_ACM \
     --module CONFIG_USB_U_SERIAL \
     --set-val CONFIG_LOCALVERSION "" \
-    --set-str CONFIG_LOCALVERSION_AUTO ""
+    --disable CONFIG_LOCALVERSION_AUTO
 
 # Prépare les headers
 RUN make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} \
@@ -52,7 +52,7 @@ RUN make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} \
 RUN make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} \
     -j$(nproc) \
     modules \
-    SUBDIRS=drivers/usb/gadget
+    M=drivers/usb/gadget
 
 # Collecte les .ko
 RUN mkdir -p /out/${KVER} && \
