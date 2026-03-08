@@ -10,9 +10,9 @@ build:
 		-f Dockerfile .
 	mkdir -p $(OUTDIR)
 	docker run --rm \
-		-v $(shell realpath $(OUTDIR)):/out/$(KVER) \
+		-v $(shell realpath $(OUTDIR)):/mnt \
 		$(IMAGE):$(KVER) \
-		sh -c "cp /out/$(KVER)/*.ko /out/$(KVER)/"
+		sh -c "cp /out/$(KVER)/*.ko /mnt/"
 	@echo "Modules copiés dans $(OUTDIR):"
 	@ls -la $(OUTDIR)/*.ko 2>/dev/null || echo "ATTENTION: aucun .ko trouvé"
 
