@@ -15,6 +15,7 @@ import (
 // Les .ko sont extraits de l'embed FS et chargés via insmod (init_module syscall).
 func Load(kver string) error {
 	deps := []string{
+		"cmac", // diagnostic: reference module from gokrazy package
 		"libcomposite",
 		"u_ether",
 		"usb_f_rndis",
