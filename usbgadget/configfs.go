@@ -119,5 +119,5 @@ func writeHex(path string, value uint64) error {
 }
 
 func writeString(path, value string) error {
-	return os.WriteFile(path, []byte(value), 0644)
+	return os.WriteFile(path, []byte(value+"\n"), 0644)
 }
