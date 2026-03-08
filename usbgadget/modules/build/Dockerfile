@@ -85,7 +85,7 @@ RUN mkdir -p /out/${KVER} && \
         -o -name "usb_f_ecm.ko" \
         -o -name "usb_f_ncm.ko" \
         -o -name "usb_f_eem.ko" \
-        -o -name "usb_f_subset.ko" \
+        -o -name "usb_f_ecm_subset.ko" \
         -o -name "usb_f_hid.ko" \
         -o -name "usb_f_mass_storage.ko" \
         -o -name "usb_f_acm.ko" \
@@ -93,6 +93,7 @@ RUN mkdir -p /out/${KVER} && \
         -o -name "usb_f_serial.ko" \
         -o -name "usb_f_obex.ko" \
         -o -name "usb_f_midi.ko" \
+        -o -name "u_audio.ko" \
         -o -name "usb_f_uac1.ko" \
         -o -name "usb_f_uac2.ko" \
         -o -name "usb_f_printer.ko" \

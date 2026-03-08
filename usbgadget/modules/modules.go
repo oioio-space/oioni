@@ -21,8 +21,8 @@ func Load(kver string) error {
 		"usb_f_rndis",
 		"usb_f_ecm",
 		"usb_f_ncm",
-		"usb_f_eem",    // EEM — silently skipped if .ko absent
-		"usb_f_subset", // CDC Subset — silently skipped if .ko absent
+		"usb_f_eem",         // EEM — silently skipped if .ko absent
+		"usb_f_ecm_subset",  // CDC Subset — real module name is usb_f_ecm_subset.ko
 		// HID
 		"usb_f_hid",
 		// Storage
@@ -33,6 +33,7 @@ func Load(kver string) error {
 		"usb_f_serial", // GSER — silently skipped if .ko absent
 		"usb_f_obex",   // OBEX — silently skipped if .ko absent
 		// Audio / MIDI
+		"u_audio",      // shared audio helper — must load before uac1/uac2
 		"usb_f_uac1",   // silently skipped if .ko absent
 		"usb_f_uac2",   // silently skipped if .ko absent
 		"usb_f_midi",
