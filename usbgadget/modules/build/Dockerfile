@@ -22,16 +22,15 @@ RUN wget -q https://github.com/raspberrypi/linux/archive/refs/tags/stable_202509
 
 WORKDIR /build/kernel
 
-# Config minimale pour compiler uniquement les modules USB gadget
-RUN make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} bcm2711_defconfig
+# Utilise le .config EXACT du kernel gokrazy (extrait via /proc/config.gz)
+# pour garantir que struct module a exactement la même taille qu'à runtime.
+COPY gokrazy-kernel.config .config
 
-# Active les modules USB gadget nécessaires
+# Active les modules USB gadget nécessaires (non présents dans le config gokrazy)
 RUN scripts/config \
     --module CONFIG_USB_GADGET \
     --module CONFIG_USB_LIBCOMPOSITE \
     --module CONFIG_USB_ETH \
-    --module CONFIG_USB_ETH_RNDIS \
-    --module CONFIG_USB_ETH_EEM \
     --module CONFIG_USB_G_NCM \
     --module CONFIG_USB_F_HID \
     --module CONFIG_USB_MASS_STORAGE \
@@ -43,7 +42,10 @@ RUN scripts/config \
     --module CONFIG_USB_F_MASS_STORAGE \
     --module CONFIG_USB_F_ACM \
     --module CONFIG_USB_U_SERIAL \
-    --disable CONFIG_LOCALVERSION_AUTO
+    --disable CONFIG_LOCALVERSION_AUTO \
+    --enable CONFIG_DYNAMIC_DEBUG \
+    --enable CONFIG_DYNAMIC_DEBUG_CORE \
+    --enable CONFIG_FTRACE_MCOUNT_RECORD
 
 # Prépare les headers
 RUN make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} \
