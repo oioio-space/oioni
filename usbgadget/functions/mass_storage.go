@@ -47,9 +47,8 @@ func (f *massStorageFunc) Configure(dir string) error {
 	if err := os.MkdirAll(lun0, 0755); err != nil {
 		return fmt.Errorf("mkdir lun.0: %w", err)
 	}
-	if err := os.WriteFile(lun0+"/file", []byte(f.file+"\n"), 0644); err != nil {
-		return err
-	}
+	// cdrom, ro, removable must be set BEFORE file: writing file opens
+	// the backing image and subsequent attribute writes return EBUSY.
 	if err := os.WriteFile(lun0+"/cdrom", []byte(boolStr(f.cdrom)), 0644); err != nil {
 		return err
 	}
@@ -57,6 +56,9 @@ func (f *massStorageFunc) Configure(dir string) error {
 		return err
 	}
 	if err := os.WriteFile(lun0+"/removable", []byte(boolStr(f.removable)), 0644); err != nil {
+		return err
+	}
+	if err := os.WriteFile(lun0+"/file", []byte(f.file+"\n"), 0644); err != nil {
 		return err
 	}
 	return nil
