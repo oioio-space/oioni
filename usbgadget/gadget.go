@@ -100,6 +100,9 @@ func (g *Gadget) Enable() error {
 	if err := mountConfigfs(); err != nil {
 		return fmt.Errorf("mountConfigfs: %w", err)
 	}
+	// Teardown any leftover state from a previous (crashed) run.
+	_ = g.unbindUDC()
+	_ = g.teardownConfigfs()
 	if err := g.setupConfigfs(); err != nil {
 		return fmt.Errorf("setupConfigfs: %w", err)
 	}
