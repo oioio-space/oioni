@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"awesomeProject/storage"
 	"awesomeProject/usbgadget"
 	"awesomeProject/usbgadget/functions"
 )
@@ -70,6 +71,21 @@ func main() {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+
+	// Storage manager — /perm + clefs USB détectées automatiquement
+	sm := storage.New(
+		storage.WithOnMount(func(v *storage.Volume) {
+			log.Printf("storage: monté %s (%s) @ %s", v.Name, v.FSType, v.MountPath)
+		}),
+		storage.WithOnUnmount(func(v *storage.Volume) {
+			log.Printf("storage: retiré %s", v.Name)
+		}),
+	)
+	go func() {
+		if err := sm.Start(ctx); err != nil {
+			log.Printf("storage: %v", err)
+		}
+	}()
 
 	// Stats réseau toutes les 30 secondes
 	go func() {
