@@ -68,7 +68,13 @@ func main() {
 	}
 
 	if err := g.Enable(); err != nil {
-		log.Fatalf("gadget.Enable: %v", err)
+		log.Printf("gadget.Enable: %v (gadget désactivé, WiFi toujours actif)", err)
+		// Ne pas Fatalf : le process continue pour que gokrazy reste stable.
+		// Le gadget USB sera inactif mais les autres services (WiFi, breakglass) fonctionnent.
+		ch := make(chan os.Signal, 1)
+		signal.Notify(ch, syscall.SIGTERM, syscall.SIGINT)
+		<-ch
+		return
 	}
 	log.Println("USB composite gadget actif : RNDIS + ECM + HID Keyboard + ACM Serial + MassStorage")
 
