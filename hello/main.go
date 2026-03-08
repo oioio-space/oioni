@@ -11,8 +11,29 @@ import (
 	"awesomeProject/usbgadget/functions"
 )
 
+const diskImg = "/perm/disk.img"
+const diskSize = 64 << 20 // 64 MiB
+
+func ensureDiskImg() {
+	if _, err := os.Stat(diskImg); err == nil {
+		return
+	}
+	f, err := os.Create(diskImg)
+	if err != nil {
+		log.Printf("create %s: %v", diskImg, err)
+		return
+	}
+	if err := f.Truncate(diskSize); err != nil {
+		log.Printf("truncate %s: %v", diskImg, err)
+	}
+	f.Close()
+	log.Printf("created %s (%d MiB sparse)", diskImg, diskSize>>20)
+}
+
 func main() {
 	log.SetFlags(0)
+
+	ensureDiskImg()
 
 	g, err := usbgadget.New(
 		usbgadget.WithName("geekhouse"),
