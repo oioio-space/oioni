@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"os"
 	"path"
 	"syscall"
 	"unsafe"
@@ -47,51 +46,25 @@ func loadModule(kver, name string) error {
 	return insmod(data)
 }
 
-// finit_module flags : bypass CRC + vermagic (modules compilés sans Module.symvers).
-const moduleInitIgnoreModversions = 1 | 2 // IGNORE_MODVERSIONS | IGNORE_VERMAGIC
-
-// insmod charge un module kernel depuis son contenu binaire.
-// Utilise finit_module(fd, "", IGNORE_MODVERSIONS) pour contourner les CRC
-// manquants (compilation sans Module.symvers du kernel gokrazy).
-// Le .ko est écrit dans /tmp pour éviter les problèmes d'écriture partielle.
+// insmod charge un module kernel depuis son contenu binaire via init_module (syscall 105).
+// init_module prend les données directement en mémoire (pas de fichier temporaire).
 func insmod(data []byte) error {
 	if len(data) == 0 {
 		return nil
 	}
-
-	f, err := os.CreateTemp("/tmp", "*.ko")
-	if err != nil {
-		return fmt.Errorf("create temp: %w", err)
-	}
-	tmpPath := f.Name()
-	defer os.Remove(tmpPath)
-
-	if _, err := f.Write(data); err != nil {
-		f.Close()
-		return fmt.Errorf("write module: %w", err)
-	}
-	// Fermer le fd d'écriture : finit_module refuse un fd ouvert en écriture (ETXTBSY).
-	f.Close()
-
-	// Rouvrir en lecture seule pour finit_module.
-	ro, err := os.Open(tmpPath)
-	if err != nil {
-		return fmt.Errorf("open ro: %w", err)
-	}
-	defer ro.Close()
 
 	paramsPtr, err := syscall.BytePtrFromString("")
 	if err != nil {
 		return err
 	}
 	_, _, errno := syscall.Syscall(
-		syscall.SYS_FINIT_MODULE,
-		ro.Fd(),
+		syscall.SYS_INIT_MODULE,
+		uintptr(unsafe.Pointer(&data[0])),
+		uintptr(len(data)),
 		uintptr(unsafe.Pointer(paramsPtr)),
-		moduleInitIgnoreModversions,
 	)
 	if errno != 0 && errno != syscall.EEXIST {
-		return fmt.Errorf("finit_module: %w", errno)
+		return fmt.Errorf("init_module: %w", errno)
 	}
 	return nil
 }
