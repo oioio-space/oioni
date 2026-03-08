@@ -49,8 +49,12 @@ RUN make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} \
     -j$(nproc) modules_prepare
 
 # Compile uniquement les modules USB gadget
+# KBUILD_MODPOST_WARN=1 : les symboles kernel (strcpy, kfree...) ne sont pas dans
+# Module.symvers lors d'un build partiel, mais ils sont bien présents dans le kernel
+# gokrazy au runtime — on accepte les warnings modpost.
 RUN make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} \
     -j$(nproc) \
+    KBUILD_MODPOST_WARN=1 \
     modules \
     M=drivers/usb/gadget
 
