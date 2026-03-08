@@ -6,10 +6,11 @@ import (
 )
 
 type ncmFunc struct {
-	instance string
-	devAddr  string
-	hostAddr string
-	qmult    uint8
+	instance  string
+	devAddr   string
+	hostAddr  string
+	qmult     uint8
+	configDir string
 }
 
 type NCMOption func(*ncmFunc)
@@ -40,7 +41,21 @@ func NCM(opts ...NCMOption) Function {
 
 func (f *ncmFunc) TypeName() string     { return "ncm" }
 func (f *ncmFunc) InstanceName() string { return f.instance }
+
+// IfName returns the kernel network interface name on the gadget side.
+func (f *ncmFunc) IfName() (string, error) { return readIfName(f.configDir) }
+
+// ReadStats returns the current network counters for this interface.
+func (f *ncmFunc) ReadStats() (NetStats, error) {
+	ifname, err := f.IfName()
+	if err != nil {
+		return NetStats{}, err
+	}
+	return readNetStats(ifname)
+}
+
 func (f *ncmFunc) Configure(dir string) error {
+	f.configDir = dir
 	if f.devAddr != "" {
 		if err := os.WriteFile(fmt.Sprintf("%s/dev_addr", dir), []byte(f.devAddr+"\n"), 0644); err != nil {
 			return err

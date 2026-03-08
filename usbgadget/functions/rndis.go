@@ -6,10 +6,11 @@ import (
 )
 
 type rndisFunc struct {
-	instance string
-	devAddr  string
-	hostAddr string
-	qmult    uint8
+	instance  string
+	devAddr   string
+	hostAddr  string
+	qmult     uint8
+	configDir string
 }
 
 type RNDISOption func(*rndisFunc)
@@ -41,7 +42,22 @@ func RNDIS(opts ...RNDISOption) Function {
 
 func (f *rndisFunc) TypeName() string     { return "rndis" }
 func (f *rndisFunc) InstanceName() string { return f.instance }
+
+// IfName returns the kernel network interface name on the gadget side (e.g. "usb0").
+// Only valid after the gadget is enabled.
+func (f *rndisFunc) IfName() (string, error) { return readIfName(f.configDir) }
+
+// ReadStats returns the current network counters for this interface.
+func (f *rndisFunc) ReadStats() (NetStats, error) {
+	ifname, err := f.IfName()
+	if err != nil {
+		return NetStats{}, err
+	}
+	return readNetStats(ifname)
+}
+
 func (f *rndisFunc) Configure(dir string) error {
+	f.configDir = dir
 	if f.devAddr != "" {
 		if err := os.WriteFile(fmt.Sprintf("%s/dev_addr", dir), []byte(f.devAddr+"\n"), 0644); err != nil {
 			return err

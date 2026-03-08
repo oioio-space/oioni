@@ -1,6 +1,7 @@
 package functions
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"sync/atomic"
@@ -14,18 +15,76 @@ type hidFunc struct {
 	subclass   uint8
 	reportLen  uint16
 	reportDesc []byte
+	devNum     int32 // index assigned at creation → /dev/hidgN
 }
 
 type HIDOption func(*hidFunc)
 
 func newHID(opts ...HIDOption) *hidFunc {
 	n := hidCounter.Add(1) - 1
-	f := &hidFunc{instance: fmt.Sprintf("usb%d", n)}
+	f := &hidFunc{instance: fmt.Sprintf("usb%d", n), devNum: n}
 	for _, o := range opts {
 		o(f)
 	}
 	return f
 }
+
+// DevPath returns the kernel hidg device path (e.g. /dev/hidg0).
+// Use this to write HID input reports or read LED output reports.
+func (f *hidFunc) DevPath() string {
+	return fmt.Sprintf("/dev/hidg%d", f.devNum)
+}
+
+// LEDState holds the keyboard LED indicators sent by the host.
+type LEDState struct {
+	NumLock    bool
+	CapsLock   bool
+	ScrollLock bool
+	Compose    bool
+	Kana       bool
+}
+
+// ReadLEDs returns a channel that delivers LED state changes sent by the host
+// (e.g. when the user presses NumLock). Blocks until ctx is cancelled.
+// Only meaningful for Keyboard HID functions (protocol=1).
+func (f *hidFunc) ReadLEDs(ctx context.Context) (<-chan LEDState, error) {
+	dev, err := os.OpenFile(f.DevPath(), os.O_RDWR, 0)
+	if err != nil {
+		return nil, fmt.Errorf("open %s: %w", f.DevPath(), err)
+	}
+	ch := make(chan LEDState, 4)
+	go func() {
+		defer dev.Close()
+		defer close(ch)
+		buf := make([]byte, 1)
+		for {
+			if ctx.Err() != nil {
+				return
+			}
+			n, err := dev.Read(buf)
+			if err != nil || n == 0 {
+				return
+			}
+			b := buf[0]
+			ch <- LEDState{
+				NumLock:    b&0x01 != 0,
+				CapsLock:   b&0x02 != 0,
+				ScrollLock: b&0x04 != 0,
+				Compose:    b&0x08 != 0,
+				Kana:       b&0x10 != 0,
+			}
+		}
+	}()
+	return ch, nil
+}
+
+// WriteReport writes a raw HID input report to the host.
+// For Keyboard: [modifier, 0x00, key1, key2, key3, key4, key5, key6]
+// For Mouse:    [buttons, deltaX, deltaY, wheel]
+func (f *hidFunc) WriteReport(report []byte) error {
+	return os.WriteFile(f.DevPath(), report, 0)
+}
+
 
 // Keyboard creates a standard HID boot keyboard.
 func Keyboard(opts ...HIDOption) Function {

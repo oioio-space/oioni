@@ -6,10 +6,11 @@ import (
 )
 
 type ecmFunc struct {
-	instance string
-	devAddr  string
-	hostAddr string
-	qmult    uint8
+	instance  string
+	devAddr   string
+	hostAddr  string
+	qmult     uint8
+	configDir string
 }
 
 type ECMOption func(*ecmFunc)
@@ -40,7 +41,21 @@ func ECM(opts ...ECMOption) Function {
 
 func (f *ecmFunc) TypeName() string     { return "ecm" }
 func (f *ecmFunc) InstanceName() string { return f.instance }
+
+// IfName returns the kernel network interface name on the gadget side.
+func (f *ecmFunc) IfName() (string, error) { return readIfName(f.configDir) }
+
+// ReadStats returns the current network counters for this interface.
+func (f *ecmFunc) ReadStats() (NetStats, error) {
+	ifname, err := f.IfName()
+	if err != nil {
+		return NetStats{}, err
+	}
+	return readNetStats(ifname)
+}
+
 func (f *ecmFunc) Configure(dir string) error {
+	f.configDir = dir
 	if f.devAddr != "" {
 		if err := os.WriteFile(fmt.Sprintf("%s/dev_addr", dir), []byte(f.devAddr+"\n"), 0644); err != nil {
 			return err
