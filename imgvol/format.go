@@ -35,13 +35,17 @@ func extractBinaries() error {
 			extractErr = err
 			return
 		}
-		bins := map[string][]byte{
-			"mkfs.fat":   binFAT,
-			"mkfs.exfat": binExFAT,
-			"mkfs.ntfs":  binNTFS,
-			"mkfs.ext4":  binExt4,
+		bins := []struct {
+			name string
+			data []byte
+		}{
+			{"mkfs.fat", binFAT},
+			{"mkfs.exfat", binExFAT},
+			{"mkfs.ntfs", binNTFS},
+			{"mkfs.ext4", binExt4},
 		}
-		for name, data := range bins {
+		for _, b := range bins {
+			name, data := b.name, b.data
 			dest := filepath.Join(extractOnceDir, name)
 			if err := os.WriteFile(dest, data, fs.FileMode(0755)); err != nil {
 				extractErr = fmt.Errorf("extract %s: %w", name, err)
