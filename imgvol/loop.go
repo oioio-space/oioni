@@ -1,16 +1,128 @@
 package imgvol
 
-// loop.go — loopback device management.
-// Implemented in Task 5. Stubs present to allow package compilation during Task 4.
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"unsafe"
 
-func detectFSType(path string) (FSType, error) {
-	panic("imgvol: loop.go not yet implemented")
+	"golang.org/x/sys/unix"
+)
+
+const (
+	loopControlPath = "/dev/loop-control"
+	loopDevFmt      = "/dev/loop%d"
+)
+
+// attach associates path with a free loopback device, mounts it at mountpoint,
+// and returns the loop device path (e.g. "/dev/loop3").
+func attach(path, mountpoint, fstype string) (loopDev string, err error) {
+	// 1. Get a free loop device number.
+	ctlFd, err := os.OpenFile(loopControlPath, os.O_RDWR, 0)
+	if err != nil {
+		return "", fmt.Errorf("open loop-control: %w", err)
+	}
+	defer ctlFd.Close()
+
+	n, err := unix.IoctlRetInt(int(ctlFd.Fd()), unix.LOOP_CTL_GET_FREE)
+	if err != nil {
+		return "", fmt.Errorf("LOOP_CTL_GET_FREE: %w", err)
+	}
+
+	loopDev = fmt.Sprintf(loopDevFmt, n)
+
+	// 2. Open the loop device.
+	loopFd, err := os.OpenFile(loopDev, os.O_RDWR, 0)
+	if err != nil {
+		return "", fmt.Errorf("open %s: %w", loopDev, err)
+	}
+	defer func() {
+		loopFd.Close()
+		if err != nil {
+			// Clean up: detach the loop device on error.
+			unix.Syscall(unix.SYS_IOCTL, loopFd.Fd(), unix.LOOP_CLR_FD, 0) //nolint:errcheck
+		}
+	}()
+
+	// 3. Open the image file.
+	imgFd, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		return "", fmt.Errorf("open image %s: %w", path, err)
+	}
+	defer imgFd.Close()
+
+	// 4. Associate image with loop device.
+	if _, _, errno := unix.Syscall(unix.SYS_IOCTL, loopFd.Fd(), unix.LOOP_SET_FD, imgFd.Fd()); errno != 0 {
+		return "", fmt.Errorf("LOOP_SET_FD: %w", errno)
+	}
+
+	// 5. Set loop info (filename for /proc/mounts readability).
+	var info unix.LoopInfo64
+	copy(info.File_name[:], []byte(filepath.Base(path)))
+	if _, _, errno := unix.Syscall(unix.SYS_IOCTL,
+		loopFd.Fd(),
+		unix.LOOP_SET_STATUS64,
+		uintptr(unsafe.Pointer(&info))); errno != 0 {
+		return "", fmt.Errorf("LOOP_SET_STATUS64: %w", errno)
+	}
+
+	// 6. Mount the loop device.
+	if err := unix.Mount(loopDev, mountpoint, fstype, unix.MS_NOATIME, ""); err != nil {
+		return "", fmt.Errorf("mount %s → %s: %w", loopDev, mountpoint, err)
+	}
+
+	return loopDev, nil
 }
 
-func attach(path, mountpoint, fstype string) (string, error) {
-	panic("imgvol: loop.go not yet implemented")
-}
-
+// detach unmounts mountpoint and releases the loop device.
 func detach(mountpoint, loopDev string) error {
-	panic("imgvol: loop.go not yet implemented")
+	// Lazy unmount: safe even if files are still open.
+	if err := unix.Unmount(mountpoint, unix.MNT_DETACH); err != nil {
+		return fmt.Errorf("unmount %s: %w", mountpoint, err)
+	}
+
+	loopFd, err := os.OpenFile(loopDev, os.O_RDWR, 0)
+	if err != nil {
+		return fmt.Errorf("open %s for detach: %w", loopDev, err)
+	}
+	defer loopFd.Close()
+
+	if _, _, errno := unix.Syscall(unix.SYS_IOCTL, loopFd.Fd(), unix.LOOP_CLR_FD, 0); errno != 0 {
+		return fmt.Errorf("LOOP_CLR_FD: %w", errno)
+	}
+	os.Remove(mountpoint)
+	return nil
+}
+
+// detectFSType reads magic bytes from the image file to identify its filesystem.
+func detectFSType(path string) (FSType, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	buf := make([]byte, 1082)
+	if _, err := f.Read(buf); err != nil {
+		return "", fmt.Errorf("detectFSType read: %w", err)
+	}
+
+	if len(buf) >= 11 {
+		oem := string(buf[3:11])
+		switch oem {
+		case "EXFAT   ":
+			return ExFAT, nil
+		case "NTFS    ":
+			return NTFS, nil
+		}
+	}
+	if len(buf) >= 0x43A {
+		if buf[0x438] == 0x53 && buf[0x439] == 0xEF {
+			return Ext4, nil
+		}
+	}
+	if len(buf) >= 512 && buf[510] == 0x55 && buf[511] == 0xAA {
+		return FAT, nil
+	}
+	return "", fmt.Errorf("imgvol: unrecognized filesystem in %s", path)
 }
