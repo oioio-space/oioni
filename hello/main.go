@@ -21,6 +21,7 @@ import (
 	"awesomeProject/storage"
 	"awesomeProject/usbgadget"
 	"awesomeProject/usbgadget/functions"
+
 	"github.com/spf13/afero"
 )
 
@@ -64,7 +65,9 @@ func main() {
 			log.Printf("img-write open: %v", err)
 		} else {
 			demoWrite(vol)
-			vol.Close()
+			if err := vol.Close(); err != nil {
+				log.Printf("img-write close: %v", err)
+			}
 		}
 	}
 
@@ -74,7 +77,9 @@ func main() {
 			log.Printf("img-read open: %v", err)
 		} else {
 			demoRead(vol)
-			vol.Close()
+			if err := vol.Close(); err != nil {
+				log.Printf("img-read close: %v", err)
+			}
 		}
 	}
 
