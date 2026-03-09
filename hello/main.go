@@ -36,7 +36,7 @@ func main() {
 
 	// Image flags
 	imgPath := flag.String("img", "/perm/data.img", "disk image path")
-	imgFSStr := flag.String("img-fs", "fat", "filesystem: fat|exfat|ntfs|ext4")
+	imgFSStr := flag.String("img-fs", "vfat", "filesystem: vfat|exfat|ntfs|ext4")
 	imgSizeMiB := flag.Int64("img-size", 64, "image size in MiB")
 	withImgCreate := flag.Bool("img-create", false, "create and format the image (fails if exists)")
 	withImgWrite := flag.Bool("img-write", false, "open image, write test files via afero, close")
