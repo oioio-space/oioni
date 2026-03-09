@@ -30,6 +30,11 @@ func DetectFSType(device string) (string, error) {
 		return "exfat", nil
 	}
 
+	// NTFS: OEM ID "NTFS    " (8 bytes, 4 trailing spaces) at offset 3
+	if len(buf) >= 11 && string(buf[3:11]) == "NTFS    " {
+		return "ntfs", nil
+	}
+
 	// ext4: superblock magic 0xEF53 (little-endian) at offset 0x438
 	if len(buf) >= 0x43A {
 		magic := binary.LittleEndian.Uint16(buf[0x438:0x43A])

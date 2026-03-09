@@ -53,6 +53,18 @@ func TestDetectFSType_exfat(t *testing.T) {
 	}
 }
 
+func TestDetectFSType_ntfs(t *testing.T) {
+	// NTFS OEM ID: "NTFS    " (4 trailing spaces) at offset 3
+	f := writeMagic(t, 2048, 3, []byte("NTFS    "))
+	got, err := DetectFSType(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "ntfs" {
+		t.Errorf("got %q, want ntfs", got)
+	}
+}
+
 func TestDetectFSType_unknown(t *testing.T) {
 	f := writeMagic(t, 2048, 0, []byte{})
 	_, err := DetectFSType(f)
