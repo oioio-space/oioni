@@ -6,3 +6,6 @@
 # gokrazy build artifacts
 oioio/builddir/
 *.gaf
+
+# imgvol: static mkfs binaries (built artifacts, not committed)
+imgvol/bin/mkfs.*

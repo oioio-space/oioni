@@ -53,5 +53,13 @@ logs: ## Stream les logs d'un service  (usage: make logs PKG=awesomeProject/hell
 find-pi: ## Vérifie la connectivité avec le Pi (ping)
 	ping -c 3 $(HOST)
 
+build-imgvol-bins: ## Compile les binaires mkfs statiques ARM64 pour imgvol
+	docker buildx build --platform linux/arm64 \
+	    --output type=local,dest=imgvol/bin \
+	    imgvol/build/
+	@echo "Binaires générés dans imgvol/bin/ :"
+	@ls -lh imgvol/bin/mkfs.* 2>/dev/null || echo "(aucun binaire trouvé — vérifier le Dockerfile)"
+	@file imgvol/bin/mkfs.* 2>/dev/null || true
+
 .DEFAULT_GOAL := help
-.PHONY: help flash flash-auto list-sd build update ssh logs find-pi
+.PHONY: help flash flash-auto list-sd build update ssh logs find-pi build-imgvol-bins
