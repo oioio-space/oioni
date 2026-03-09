@@ -40,7 +40,7 @@ RUN mkdir /out
 WORKDIR /build/dosfstools
 RUN git clone --depth 1 https://github.com/dosfstools/dosfstools.git . && \
     autoreconf -fi && \
-    LDFLAGS="-static" ./configure --without-udev && \
+    LDFLAGS="-static" ./configure --disable-shared --without-udev && \
     make -j$(nproc) && \
     cp src/mkfs.fat /out/mkfs.fat
 
@@ -48,28 +48,29 @@ RUN git clone --depth 1 https://github.com/dosfstools/dosfstools.git . && \
 WORKDIR /build/exfatprogs
 RUN git clone --depth 1 https://github.com/exfatprogs/exfatprogs.git . && \
     autoreconf -fi && \
-    LDFLAGS="-static" ./configure && \
+    LDFLAGS="-static" ./configure --disable-shared && \
     make -j$(nproc) && \
     cp mkfs/mkfs.exfat /out/mkfs.exfat
 
 # ── ntfs-3g (mkntfs → mkfs.ntfs) ─────────────────────────────────────────────
+# Uses libfuse/ntfs-3g (maintained fork). --enable-ntfsprogs is required to
+# build mkntfs; --without-fuse avoids the FUSE dependency for the library.
 WORKDIR /build/ntfs3g
-RUN apk add --no-cache fuse-dev && \
-    git clone --depth 1 https://github.com/tuxera/ntfs-3g.git . && \
+RUN git clone --depth 1 https://github.com/libfuse/ntfs-3g.git . && \
     autoreconf -fi && \
     LDFLAGS="-static" ./configure \
         --disable-shared \
         --enable-static \
-        --disable-ntfsprogs \
-        --enable-extras \
+        --enable-ntfsprogs \
         --without-fuse && \
-    make -j$(nproc) -C ntfsprogs mkntfs && \
+    make -j$(nproc) ntfsprogs/mkntfs && \
     cp ntfsprogs/mkntfs /out/mkfs.ntfs
 
 # ── e2fsprogs (mke2fs → mkfs.ext4) ───────────────────────────────────────────
 WORKDIR /build/e2fsprogs
 RUN git clone --depth 1 https://git.kernel.org/pub/scm/fs/ext2/e2fsprogs.git . && \
-    ./configure LDFLAGS="-static" --disable-shared --enable-static && \
+    ./configure LDFLAGS="-static" --disable-shared --enable-static \
+        --disable-blkid --disable-backtrace && \
     make -j$(nproc) && \
     cp misc/mke2fs /out/mkfs.ext4
 
