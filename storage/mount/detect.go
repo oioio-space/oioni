@@ -9,7 +9,7 @@ import (
 )
 
 // DetectFSType reads magic bytes from device to identify the filesystem type.
-// Supported: ext4, vfat (FAT16/FAT32), exfat.
+// Supported: ext4, vfat (FAT16/FAT32), exfat, ntfs.
 func DetectFSType(device string) (string, error) {
 	f, err := os.Open(device)
 	if err != nil {
