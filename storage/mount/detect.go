@@ -5,6 +5,7 @@ package mount
 import (
 	"encoding/binary"
 	"fmt"
+	"io"
 	"os"
 )
 
@@ -21,7 +22,7 @@ func DetectFSType(device string) (string, error) {
 	// ext4 superblock magic @ 0x438 (1080) needs 1082 bytes minimum.
 	const readSize = 1082
 	buf := make([]byte, readSize)
-	if _, err := f.Read(buf); err != nil {
+	if _, err := io.ReadFull(f, buf); err != nil {
 		return "", fmt.Errorf("detect fstype read: %w", err)
 	}
 

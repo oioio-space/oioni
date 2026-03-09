@@ -71,6 +71,8 @@ func Create(path string, size int64, fstype FSType) error {
 
 // Open detects the filesystem type, loop-mounts the image, and returns a Volume.
 // The caller must call vol.Close() when done.
+// Only one Volume per image path may be open at a time; a second Open on the
+// same path while the first is still open will fail with EBUSY at mount time.
 func Open(path string) (*Volume, error) {
 	fstype, err := detectFSType(path)
 	if err != nil {
