@@ -1,17 +1,15 @@
-// hello/main.go — démo composite USB gadget sur Pi Zero 2W (gokrazy)
+// hello/main.go — demo composite USB gadget on Pi Zero 2W (gokrazy)
 //
-// Contrainte matérielle : DWC2 BCM2835 (Pi Zero 2W) dispose de 7 endpoints
-// utilisables hors EP0. Budget par fonction :
-//   RNDIS        : 3 EP (bulk in/out + interrupt)
-//   ECM          : 3 EP (bulk in/out + interrupt)
-//   HID keyboard : 1 EP (interrupt in)
-// Total          : 7 EP — limite absolue du contrôleur.
-// ACM Serial et MassStorage nécessiteraient 3 EP et 2 EP supplémentaires,
-// ce qui dépasse la capacité → can't bind, err -19 (ENODEV).
+// EP budget reference (DWC2 BCM2835, max 7 usable EPs beyond EP0):
+//   RNDIS: 3 EP  |  ECM: 3 EP  |  HID: 1 EP  |  MassStorage: 2 EP
+//   RNDIS + MassStorage = 5 EP  ✓
+//   RNDIS + ECM + HID   = 7 EP  ✓
+//   RNDIS + ECM + MassStorage = 8 EP  ✗ → clear error from udc.go
 package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -19,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"awesomeProject/imgvol"
 	"awesomeProject/storage"
 	"awesomeProject/usbgadget"
 	"awesomeProject/usbgadget/functions"
@@ -28,143 +27,182 @@ import (
 func main() {
 	log.SetFlags(log.Ltime)
 
-	// MACs stables → même interface réseau côté hôte à chaque boot,
-	// même bail DHCP si le routeur mémorise les MACs.
-	rndis := functions.RNDIS(
-		functions.WithRNDISHostAddr("02:00:00:aa:bb:01"),
-		functions.WithRNDISDevAddr("02:00:00:aa:bb:02"),
-	)
-	ecm := functions.ECM(
-		functions.WithECMHostAddr("02:00:00:cc:dd:01"),
-		functions.WithECMDevAddr("02:00:00:cc:dd:02"),
-	)
-	kbd := functions.Keyboard()
+	// Gadget flags
+	withRNDIS := flag.Bool("rndis", false, "enable RNDIS network function (3 EP)")
+	withECM := flag.Bool("ecm", false, "enable ECM network function (3 EP)")
+	withHID := flag.Bool("hid", false, "enable HID keyboard function (1 EP)")
+	withMassStorage := flag.Bool("mass-storage", false, "enable MassStorage function using --img (2 EP)")
 
-	g, err := usbgadget.New(
+	// Image flags
+	imgPath := flag.String("img", "/perm/data.img", "disk image path")
+	imgFSStr := flag.String("img-fs", "fat", "filesystem: fat|exfat|ntfs|ext4")
+	imgSizeMiB := flag.Int64("img-size", 64, "image size in MiB")
+	withImgCreate := flag.Bool("img-create", false, "create and format the image (fails if exists)")
+	withImgWrite := flag.Bool("img-write", false, "open image, write test files via afero, close")
+	withImgRead := flag.Bool("img-read", false, "open image, print contents via afero, close")
+
+	// Storage hotplug
+	withStorage := flag.Bool("storage", false, "enable USB hotplug storage manager")
+
+	flag.Parse()
+
+	// ── Image operations (before gadget, so Pi owns the image first) ──────────
+	fstype := imgvol.FSType(*imgFSStr)
+
+	if *withImgCreate {
+		log.Printf("img: creating %s (%d MiB, %s)", *imgPath, *imgSizeMiB, fstype)
+		if err := imgvol.Create(*imgPath, *imgSizeMiB<<20, fstype); err != nil {
+			log.Printf("img-create: %v", err)
+		} else {
+			log.Printf("img: created %s", *imgPath)
+		}
+	}
+
+	if *withImgWrite {
+		vol, err := imgvol.Open(*imgPath)
+		if err != nil {
+			log.Printf("img-write open: %v", err)
+		} else {
+			demoWrite(vol)
+			vol.Close()
+		}
+	}
+
+	if *withImgRead {
+		vol, err := imgvol.Open(*imgPath)
+		if err != nil {
+			log.Printf("img-read open: %v", err)
+		} else {
+			demoRead(vol)
+			vol.Close()
+		}
+	}
+
+	// ── Gadget ────────────────────────────────────────────────────────────────
+	anyGadget := *withRNDIS || *withECM || *withHID || *withMassStorage
+	anyBackground := anyGadget || *withStorage
+
+	if !anyBackground {
+		return // only image operations requested — done
+	}
+
+	var rndis *functions.RNDISFunc
+	var ecm *functions.ECMFunc
+
+	opts := []usbgadget.Option{
 		usbgadget.WithName("geekhouse"),
 		usbgadget.WithVendorID(0x1d6b, 0x0104),
 		usbgadget.WithStrings("0x409", "GeekHouse", "oioio Composite", "pi0001"),
-		// RNDIS en premier — Windows identifie le composite gadget correctement
-		usbgadget.WithFunc(rndis),
-		usbgadget.WithFunc(ecm),
-		usbgadget.WithFunc(kbd),
-	)
-	if err != nil {
-		log.Fatalf("usbgadget.New: %v", err)
 	}
 
-	if err := g.Enable(); err != nil {
-		log.Printf("gadget.Enable: %v (gadget désactivé, WiFi toujours actif)", err)
-		// Ne pas Fatalf : le process continue pour que gokrazy reste stable.
-		// Le gadget USB sera inactif mais les autres services (WiFi, breakglass) fonctionnent.
-		ch := make(chan os.Signal, 1)
-		signal.Notify(ch, syscall.SIGTERM, syscall.SIGINT)
-		<-ch
-		return
+	if *withRNDIS {
+		rndis = functions.RNDIS(
+			functions.WithRNDISHostAddr("02:00:00:aa:bb:01"),
+			functions.WithRNDISDevAddr("02:00:00:aa:bb:02"),
+		)
+		opts = append(opts, usbgadget.WithFunc(rndis))
 	}
-	log.Println("USB composite gadget actif : RNDIS + ECM + HID Keyboard")
-
-	// Affiche les noms d'interfaces réseau côté Pi
-	if ifname, err := rndis.IfName(); err == nil {
-		log.Printf("RNDIS → interface Pi : %s", ifname)
+	if *withECM {
+		ecm = functions.ECM(
+			functions.WithECMHostAddr("02:00:00:cc:dd:01"),
+			functions.WithECMDevAddr("02:00:00:cc:dd:02"),
+		)
+		opts = append(opts, usbgadget.WithFunc(ecm))
 	}
-	if ifname, err := ecm.IfName(); err == nil {
-		log.Printf("ECM   → interface Pi : %s", ifname)
+	if *withHID {
+		opts = append(opts, usbgadget.WithFunc(functions.Keyboard()))
+	}
+	if *withMassStorage {
+		opts = append(opts, usbgadget.WithFunc(functions.MassStorage(*imgPath,
+			functions.WithRemovable(true),
+		)))
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	// Storage manager — /perm + clefs USB détectées automatiquement
-	sm := storage.New(
-		storage.WithOnMount(func(v *storage.Volume) {
-			log.Printf("storage: monté %s (%s) @ %s", v.Name, v.FSType, v.MountPath)
-			demoStorage(v)
-		}),
-		storage.WithOnUnmount(func(v *storage.Volume) {
-			log.Printf("storage: retiré %s", v.Name)
-		}),
-	)
-	go func() {
-		if err := sm.Start(ctx); err != nil {
-			log.Printf("storage: %v", err)
-		}
-	}()
-
-	// Stats réseau toutes les 30 secondes
-	go func() {
-		t := time.NewTicker(30 * time.Second)
-		defer t.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-t.C:
-				if s, err := rndis.ReadStats(); err == nil {
-					log.Printf("RNDIS stats: rx=%d tx=%d bytes (rx_err=%d tx_err=%d)",
-						s.RxBytes, s.TxBytes, s.RxErrors, s.TxErrors)
-				}
-				if s, err := ecm.ReadStats(); err == nil {
-					log.Printf("ECM   stats: rx=%d tx=%d bytes",
-						s.RxBytes, s.TxBytes)
-				}
-			}
-		}
-	}()
-
-	// Lecture des LEDs clavier (NumLock / CapsLock / ScrollLock)
-	go func() {
-		leds, err := kbd.ReadLEDs(ctx)
+	if anyGadget {
+		g, err := usbgadget.New(opts...)
 		if err != nil {
-			log.Printf("ReadLEDs: %v", err)
-			return
+			log.Printf("usbgadget.New: %v", err)
+		} else if err := g.Enable(); err != nil {
+			log.Printf("gadget.Enable: %v (USB inactif, WiFi OK)", err)
+		} else {
+			log.Println("USB gadget actif")
+			if rndis != nil {
+				if ifname, err := rndis.IfName(); err == nil {
+					log.Printf("RNDIS → %s", ifname)
+				}
+				go logStats(ctx, rndis, ecm)
+			}
+			defer func() {
+				if err := g.Disable(); err != nil {
+					log.Printf("gadget.Disable: %v", err)
+				}
+			}()
 		}
-		for state := range leds {
-			log.Printf("LED clavier → NumLock=%v CapsLock=%v ScrollLock=%v",
-				state.NumLock, state.CapsLock, state.ScrollLock)
-		}
-	}()
+	}
+
+	if *withStorage {
+		sm := storage.New(
+			storage.WithOnMount(func(v *storage.Volume) {
+				log.Printf("storage: mounted %s (%s) @ %s", v.Name, v.FSType, v.MountPath)
+			}),
+			storage.WithOnUnmount(func(v *storage.Volume) {
+				log.Printf("storage: removed %s", v.Name)
+			}),
+		)
+		go func() {
+			if err := sm.Start(ctx); err != nil {
+				log.Printf("storage: %v", err)
+			}
+		}()
+	}
 
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, syscall.SIGTERM, syscall.SIGINT)
 	<-ch
+	log.Println("shutting down...")
+}
 
-	cancel()
-	log.Println("Arrêt du gadget USB...")
-	if err := g.Disable(); err != nil {
-		log.Printf("gadget.Disable: %v", err)
+func demoWrite(vol *imgvol.Volume) {
+	name := fmt.Sprintf("boot-%s.txt", time.Now().Format("2006-01-02T15-04-05"))
+	content := fmt.Sprintf("boot at %s on %s (%s)\n", time.Now().Format(time.RFC3339), vol.Path, vol.FSType)
+	if err := afero.WriteFile(vol.FS, name, []byte(content), 0644); err != nil {
+		log.Printf("img-write: %v", err)
+		return
+	}
+	log.Printf("img-write: wrote %s", name)
+}
+
+func demoRead(vol *imgvol.Volume) {
+	entries, err := afero.ReadDir(vol.FS, ".")
+	if err != nil {
+		log.Printf("img-read readdir: %v", err)
+		return
+	}
+	log.Printf("img-read: %d file(s) in %s (%s)", len(entries), vol.Path, vol.FSType)
+	for _, e := range entries {
+		log.Printf("  %s (%d bytes)", e.Name(), e.Size())
 	}
 }
 
-// demoStorage montre l'API afero sur un volume monté :
-// écriture d'un fichier horodaté, lecture, listage du répertoire.
-func demoStorage(v *storage.Volume) {
-	fs := v.FS
-
-	// 1. Écriture d'un fichier avec timestamp
-	bootFile := fmt.Sprintf("boot-%s.txt", time.Now().Format("2006-01-02T15-04-05"))
-	content := fmt.Sprintf("boot at %s on volume %s (%s)\n", time.Now().Format(time.RFC3339), v.Name, v.FSType)
-	if err := afero.WriteFile(fs, bootFile, []byte(content), 0644); err != nil {
-		log.Printf("storage[%s]: write %s: %v", v.Name, bootFile, err)
-	} else {
-		log.Printf("storage[%s]: écrit %s", v.Name, bootFile)
-	}
-
-	// 2. Relecture pour vérifier
-	data, err := afero.ReadFile(fs, bootFile)
-	if err != nil {
-		log.Printf("storage[%s]: read %s: %v", v.Name, bootFile, err)
-	} else {
-		log.Printf("storage[%s]: contenu → %s", v.Name, string(data))
-	}
-
-	// 3. Listage du répertoire racine du volume
-	entries, err := afero.ReadDir(fs, ".")
-	if err != nil {
-		log.Printf("storage[%s]: readdir: %v", v.Name, err)
-		return
-	}
-	log.Printf("storage[%s]: %d entrée(s) dans /", v.Name, len(entries))
-	for _, e := range entries {
-		log.Printf("storage[%s]:   %s (%d bytes)", v.Name, e.Name(), e.Size())
+func logStats(ctx context.Context, rndis *functions.RNDISFunc, ecm *functions.ECMFunc) {
+	t := time.NewTicker(30 * time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			if s, err := rndis.ReadStats(); err == nil {
+				log.Printf("RNDIS stats: rx=%d tx=%d bytes", s.RxBytes, s.TxBytes)
+			}
+			if ecm != nil {
+				if s, err := ecm.ReadStats(); err == nil {
+					log.Printf("ECM stats: rx=%d tx=%d bytes", s.RxBytes, s.TxBytes)
+				}
+			}
+		}
 	}
 }
