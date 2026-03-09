@@ -54,7 +54,10 @@ func Create(path string, size int64, fstype FSType) error {
 	if err != nil {
 		return fmt.Errorf("imgvol.Create: %w", err)
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		os.Remove(path)
+		return fmt.Errorf("imgvol.Create close: %w", err)
+	}
 	if err := os.Truncate(path, size); err != nil {
 		os.Remove(path)
 		return fmt.Errorf("imgvol.Create truncate: %w", err)
@@ -79,6 +82,7 @@ func Open(path string) (*Volume, error) {
 	}
 	loopDev, err := attach(path, mp, string(fstype))
 	if err != nil {
+		os.Remove(mp)
 		return nil, fmt.Errorf("imgvol.Open attach: %w", err)
 	}
 	return &Volume{
