@@ -2,6 +2,7 @@ package imgvol
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"unsafe"
@@ -36,25 +37,28 @@ func attach(path, mountpoint, fstype string) (loopDev string, err error) {
 	if err != nil {
 		return "", fmt.Errorf("open %s: %w", loopDev, err)
 	}
-	defer func() {
-		loopFd.Close()
-		if err != nil {
-			// Clean up: detach the loop device on error.
-			unix.Syscall(unix.SYS_IOCTL, loopFd.Fd(), unix.LOOP_CLR_FD, 0) //nolint:errcheck
-		}
-	}()
 
 	// 3. Open the image file.
 	imgFd, err := os.OpenFile(path, os.O_RDWR, 0)
 	if err != nil {
+		loopFd.Close()
 		return "", fmt.Errorf("open image %s: %w", path, err)
 	}
 	defer imgFd.Close()
 
 	// 4. Associate image with loop device.
 	if _, _, errno := unix.Syscall(unix.SYS_IOCTL, loopFd.Fd(), unix.LOOP_SET_FD, imgFd.Fd()); errno != 0 {
+		loopFd.Close()
 		return "", fmt.Errorf("LOOP_SET_FD: %w", errno)
 	}
+	// Defer registered after LOOP_SET_FD: LOOP_CLR_FD must run before Close to undo
+	// the association. Closing loopFd first would set fd=-1, making CLR_FD a no-op.
+	defer func() {
+		if err != nil {
+			unix.Syscall(unix.SYS_IOCTL, loopFd.Fd(), unix.LOOP_CLR_FD, 0) //nolint:errcheck
+		}
+		loopFd.Close()
+	}()
 
 	// 5. Set loop info (filename for /proc/mounts readability).
 	var info unix.LoopInfo64
@@ -90,7 +94,9 @@ func detach(mountpoint, loopDev string) error {
 	if _, _, errno := unix.Syscall(unix.SYS_IOCTL, loopFd.Fd(), unix.LOOP_CLR_FD, 0); errno != 0 {
 		return fmt.Errorf("LOOP_CLR_FD: %w", errno)
 	}
-	os.Remove(mountpoint)
+	if err := os.Remove(mountpoint); err != nil {
+		return fmt.Errorf("remove mountpoint %s: %w", mountpoint, err)
+	}
 	return nil
 }
 
@@ -103,7 +109,7 @@ func detectFSType(path string) (FSType, error) {
 	defer f.Close()
 
 	buf := make([]byte, 1082)
-	if _, err := f.Read(buf); err != nil {
+	if _, err := io.ReadFull(f, buf); err != nil {
 		return "", fmt.Errorf("detectFSType read: %w", err)
 	}
 
