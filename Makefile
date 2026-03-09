@@ -61,5 +61,7 @@ build-imgvol-bins: ## Compile les binaires mkfs statiques ARM64 pour imgvol
 	@ls -lh imgvol/bin/mkfs.* 2>/dev/null || echo "(aucun binaire trouvé — vérifier le Dockerfile)"
 	@file imgvol/bin/mkfs.* 2>/dev/null || true
 
+build-all: build-imgvol-bins build ## Build static bins then verify gokrazy compilation
+
 .DEFAULT_GOAL := help
-.PHONY: help flash flash-auto list-sd build update ssh logs find-pi build-imgvol-bins
+.PHONY: help flash flash-auto list-sd build update ssh logs find-pi build-imgvol-bins build-all
