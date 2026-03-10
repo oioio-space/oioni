@@ -1,76 +1,65 @@
 # imgvol/build/Dockerfile
 # Builds static ARM64 mkfs binaries for gokrazy (no libc / no dynamic linker at runtime).
-# Run via: make build-imgvol-bins
+# Run via: make build-imgvol-bins  (uses docker buildx --output)
+#       or: podman build + podman cp  (see Makefile)
 #
-# Strategy: Alpine edge on linux/arm64 — musl libc makes -static straightforward.
-# Each tool is compiled from source with LDFLAGS="-static" and --disable-shared.
-# The final FROM scratch stage + --output type=local extracts binaries to imgvol/bin/.
+# Strategy: Alpine edge on linux/arm64, release tarballs (pre-generated configure,
+# no autoreconf needed), LDFLAGS=-static for fully static binaries.
 #
-# Prerequisites:
-#   - Docker with buildx plugin (NOT podman — `docker buildx build --output` is required)
-#   - ARM64 QEMU binfmt_misc registered for cross-build on x86_64 hosts:
-#       docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
-#
-# Build NOT executed during initial commit: `docker` binary unavailable on this
-# machine (only `podman` is installed). The pipeline structure is correct and
-# ready to run on any host with Docker + buildx + QEMU ARM64 emulation.
+# Prerequisites (x86_64 host):
+#   sudo dnf install qemu-user-static   # registers ARM64 binfmt_misc
 #
 # To verify binaries once built:
 #   file imgvol/bin/mkfs.*
 #   # Expected: ELF 64-bit LSB executable, ARM aarch64, statically linked
-#
-# Known issues / fallback notes:
-#   - ntfs-3g: --without-fuse avoids fuse dep; libntfs-3g is linked statically.
-#   - e2fsprogs: produces mke2fs; copied as mkfs.ext4.
-#   - If a tool fails to link fully statically, copy the Alpine package binary
-#     and bundle required .so files alongside it (gokrazy can load them if placed
-#     in the same directory and LD_LIBRARY_PATH is set by the wrapper).
 
 FROM --platform=linux/arm64 alpine:edge AS builder
 
 RUN apk add --no-cache \
-    build-base cmake automake autoconf libtool \
-    linux-headers git \
+    build-base cmake \
+    linux-headers wget tar \
     musl-dev musl-utils \
-    util-linux-dev
+    util-linux-dev \
+    attr-dev \
+    libuuid
 
 RUN mkdir /out
 
-# ── dosfstools (mkfs.fat) ─────────────────────────────────────────────────────
+# ── dosfstools 4.2 (mkfs.fat) ─────────────────────────────────────────────────
+# Using release tarball: configure already generated, no autoreconf needed.
 WORKDIR /build/dosfstools
-RUN git clone --depth 1 https://github.com/dosfstools/dosfstools.git . && \
-    autoreconf -fi && \
-    LDFLAGS="-static" ./configure --disable-shared --without-udev && \
+RUN wget -q https://github.com/dosfstools/dosfstools/releases/download/v4.2/dosfstools-4.2.tar.gz && \
+    tar xf dosfstools-4.2.tar.gz --strip-components=1 && \
+    LDFLAGS="-static" ./configure --disable-shared --without-udev --without-iconv && \
     make -j$(nproc) && \
     cp src/mkfs.fat /out/mkfs.fat
 
-# ── exfatprogs (mkfs.exfat) ───────────────────────────────────────────────────
+# ── exfatprogs 1.2.5 (mkfs.exfat) ────────────────────────────────────────────
+# libtool strips LDFLAGS=-static; use -all-static which libtool recognizes.
 WORKDIR /build/exfatprogs
-RUN git clone --depth 1 https://github.com/exfatprogs/exfatprogs.git . && \
-    autoreconf -fi && \
-    LDFLAGS="-static" ./configure --disable-shared && \
-    make -j$(nproc) && \
+RUN wget -q https://github.com/exfatprogs/exfatprogs/releases/download/1.2.5/exfatprogs-1.2.5.tar.gz && \
+    tar xf exfatprogs-1.2.5.tar.gz --strip-components=1 && \
+    ./configure --disable-shared && \
+    make LDFLAGS="-all-static" -j$(nproc) && \
     cp mkfs/mkfs.exfat /out/mkfs.exfat
 
-# ── ntfs-3g (mkntfs → mkfs.ntfs) ─────────────────────────────────────────────
-# Uses libfuse/ntfs-3g (maintained fork). --enable-ntfsprogs is required to
-# build mkntfs; --without-fuse avoids the FUSE dependency for the library.
-WORKDIR /build/ntfs3g
-RUN git clone --depth 1 https://github.com/libfuse/ntfs-3g.git . && \
+# ── ntfsprogs-plus (mkntfs → mkfs.ntfs) ──────────────────────────────────────
+# ntfsprogs-plus is a modern standalone fork of ntfsprogs (no FUSE dependency,
+# simpler build than ntfs-3g). See https://github.com/ntfsprogs-plus/ntfsprogs-plus
+WORKDIR /build/ntfsprogs
+RUN apk add --no-cache git automake autoconf libtool libgcrypt-dev util-linux-static && \
+    git clone --depth 1 https://github.com/ntfsprogs-plus/ntfsprogs-plus.git . && \
     autoreconf -fi && \
-    LDFLAGS="-static" ./configure \
-        --disable-shared \
-        --enable-static \
-        --enable-ntfsprogs \
-        --without-fuse && \
-    make -j$(nproc) ntfsprogs/mkntfs && \
-    cp ntfsprogs/mkntfs /out/mkfs.ntfs
+    ./configure --disable-shared --enable-static && \
+    make -C libntfs LDFLAGS="-all-static" -j$(nproc) && \
+    make -C src LDFLAGS="-all-static" -j$(nproc) mkntfs && \
+    cp src/mkntfs /out/mkfs.ntfs
 
-# ── e2fsprogs (mke2fs → mkfs.ext4) ───────────────────────────────────────────
+# ── e2fsprogs 1.47.2 (mke2fs → mkfs.ext4) ────────────────────────────────────
 WORKDIR /build/e2fsprogs
-RUN git clone --depth 1 https://git.kernel.org/pub/scm/fs/ext2/e2fsprogs.git . && \
-    ./configure LDFLAGS="-static" --disable-shared --enable-static \
-        --disable-blkid --disable-backtrace && \
+RUN wget -q https://www.kernel.org/pub/linux/kernel/people/tytso/e2fsprogs/v1.47.2/e2fsprogs-1.47.2.tar.gz && \
+    tar xf e2fsprogs-1.47.2.tar.gz --strip-components=1 && \
+    LDFLAGS="-static" ./configure --disable-backtrace && \
     make -j$(nproc) && \
     cp misc/mke2fs /out/mkfs.ext4
 

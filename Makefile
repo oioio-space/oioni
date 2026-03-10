@@ -54,7 +54,7 @@ find-pi: ## Vérifie la connectivité avec le Pi (ping)
 	ping -c 3 $(HOST)
 
 build-imgvol-bins: ## Compile les binaires mkfs statiques ARM64 pour imgvol
-	docker buildx build --platform linux/arm64 \
+	podman build --platform linux/arm64 \
 	    --output type=local,dest=imgvol/bin \
 	    imgvol/build/
 	@echo "Binaires générés dans imgvol/bin/ :"
