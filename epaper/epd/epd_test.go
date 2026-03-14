@@ -95,3 +95,59 @@ func TestInitFullSendsReset(t *testing.T) {
 		t.Error("expected software reset command 0x12 in SPI log")
 	}
 }
+
+func TestDisplayFullSendsBuffer(t *testing.T) {
+	spi := &fakeSPI{}
+	busy := &fakeInputPin{val: false}
+	d := newDisplay(spi, &fakeOutputPin{}, &fakeOutputPin{}, &fakeOutputPin{}, busy)
+	d.Init(ModeFull)
+	spi.log = nil // reset log after init
+
+	buf := make([]byte, BufferSize)
+	buf[0] = 0xAB
+	if err := d.DisplayFull(buf); err != nil {
+		t.Fatal(err)
+	}
+	// The data byte 0xAB must appear in the SPI log
+	found := false
+	for _, pkt := range spi.log {
+		for _, b := range pkt {
+			if b == 0xAB {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Error("expected buffer content 0xAB in SPI log")
+	}
+}
+
+func TestSleepSendsCommand(t *testing.T) {
+	spi := &fakeSPI{}
+	busy := &fakeInputPin{val: false}
+	d := newDisplay(spi, &fakeOutputPin{}, &fakeOutputPin{}, &fakeOutputPin{}, busy)
+	spi.log = nil
+	d.Sleep()
+	found := false
+	for _, pkt := range spi.log {
+		if len(pkt) == 1 && pkt[0] == 0x10 {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected deep sleep command 0x10")
+	}
+}
+
+func TestCloseCallsClosers(t *testing.T) {
+	closed := 0
+	closer := func() error { closed++; return nil }
+	d := newDisplay(&fakeSPI{}, &fakeOutputPin{}, &fakeOutputPin{}, &fakeOutputPin{}, &fakeInputPin{})
+	d.closers = []func() error{closer, closer, closer}
+	if err := d.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if closed != 3 {
+		t.Errorf("expected 3 closers called, got %d", closed)
+	}
+}

@@ -212,9 +212,45 @@ func (d *Display) Init(m Mode) error {
 	return d.firstErr
 }
 
-// Placeholder stubs — implemented in subsequent tasks.
-func (d *Display) DisplayFull(buf []byte) error                       { return nil }
+func (d *Display) DisplayFull(buf []byte) error {
+	d.firstErr = nil
+	d.sendCommand(0x24) // write RAM
+	d.sendData(buf...)
+	d.sendCommand(0x22)
+	d.sendData(0xF7)
+	d.sendCommand(0x20)
+	d.waitBusy()
+	return d.firstErr
+}
+
+func (d *Display) DisplayFast(buf []byte) error {
+	d.firstErr = nil
+	d.sendCommand(0x24)
+	d.sendData(buf...)
+	d.sendCommand(0x22)
+	d.sendData(0xC7)
+	d.sendCommand(0x20)
+	d.waitBusy()
+	return d.firstErr
+}
+
+func (d *Display) Sleep() error {
+	d.firstErr = nil
+	d.sendCommand(0x10)
+	d.sendData(0x01)
+	time.Sleep(100 * time.Millisecond)
+	return d.firstErr
+}
+
+func (d *Display) Close() error {
+	var first error
+	for _, fn := range d.closers {
+		if err := fn(); err != nil && first == nil {
+			first = err
+		}
+	}
+	return first
+}
+
+// Placeholder stub — implemented in subsequent task.
 func (d *Display) DisplayPartial(r image.Rectangle, buf []byte) error { return nil }
-func (d *Display) DisplayFast(buf []byte) error                       { return nil }
-func (d *Display) Sleep() error                                       { return nil }
-func (d *Display) Close() error                                       { return nil }
