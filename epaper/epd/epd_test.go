@@ -3,6 +3,7 @@ package epd
 
 import (
 	"fmt"
+	"image"
 	"testing"
 )
 
@@ -149,5 +150,32 @@ func TestCloseCallsClosers(t *testing.T) {
 	}
 	if closed != 3 {
 		t.Errorf("expected 3 closers called, got %d", closed)
+	}
+}
+
+func TestDisplayPartialSendsRegionBuffer(t *testing.T) {
+	spi := &fakeSPI{}
+	busy := &fakeInputPin{val: false}
+	d := newDisplay(spi, &fakeOutputPin{}, &fakeOutputPin{}, &fakeOutputPin{}, busy)
+	d.Init(ModePartial)
+	spi.log = nil
+
+	// 10×10 pixel region at (0,0): ceil(10/8)=2 bytes/row × 10 rows = 20 bytes
+	r := image.Rect(0, 0, 10, 10)
+	buf := make([]byte, 2*10)
+	buf[0] = 0xCD
+	if err := d.DisplayPartial(r, buf); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, pkt := range spi.log {
+		for _, b := range pkt {
+			if b == 0xCD {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Error("expected partial buffer content 0xCD in SPI log")
 	}
 }

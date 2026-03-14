@@ -252,5 +252,21 @@ func (d *Display) Close() error {
 	return first
 }
 
-// Placeholder stub — implemented in subsequent task.
-func (d *Display) DisplayPartial(r image.Rectangle, buf []byte) error { return nil }
+func (d *Display) DisplayPartial(r image.Rectangle, buf []byte) error {
+	d.firstErr = nil
+	d.sendCommand(0x44) // set RAM X window
+	d.sendData(byte(r.Min.X/8), byte((r.Max.X-1)/8))
+	d.sendCommand(0x45) // set RAM Y window
+	d.sendData(byte(r.Min.Y), byte(r.Min.Y>>8), byte(r.Max.Y-1), byte((r.Max.Y-1)>>8))
+	d.sendCommand(0x4E) // cursor X
+	d.sendData(byte(r.Min.X / 8))
+	d.sendCommand(0x4F) // cursor Y
+	d.sendData(byte(r.Min.Y), byte(r.Min.Y>>8))
+	d.sendCommand(0x24) // write RAM
+	d.sendData(buf...)
+	d.sendCommand(0x22)
+	d.sendData(0xFF)
+	d.sendCommand(0x20)
+	d.waitBusy()
+	return d.firstErr
+}
