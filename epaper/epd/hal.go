@@ -38,9 +38,14 @@ type spiIOCTransfer struct {
 // Compile-time assertion: struct must be exactly 32 bytes on ARM64.
 var _ [32]byte = [unsafe.Sizeof(spiIOCTransfer{})]byte{}
 
-// spiIOCMessage1 = _IOW('k', 0, spi_ioc_transfer) = (1<<30)|(32<<16)|('k'<<8)|0 = 0x40206b00
-// Valid for ARM64 only (sizeof=32). This file is ARM64-targeted (gokrazy on Pi Zero 2W).
-const spiIOCMessage1 = 0x40206b00
+const (
+	// spiIOCMessage1 = _IOW('k', 0, spi_ioc_transfer) = 0x40206b00 (ARM64, sizeof=32).
+	spiIOCMessage1 = 0x40206b00
+	// spiIOCWrMode = _IOW('k', 1, uint8) = SPI_IOC_WR_MODE.
+	spiIOCWrMode = 0x40016b01
+	// spiIOCWrBitsPerWord = _IOW('k', 3, uint8) = SPI_IOC_WR_BITS_PER_WORD.
+	spiIOCWrBitsPerWord = 0x40016b03
+)
 
 type linuxSPI struct {
 	fd    int
@@ -53,12 +58,12 @@ func openSPI(device string, speed uint32) (*linuxSPI, error) {
 		return nil, fmt.Errorf("open %s: %w", device, err)
 	}
 	mode := uint8(0) // SPI_MODE_0
-	if _, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), 0x40016b01, uintptr(unsafe.Pointer(&mode))); errno != 0 {
+	if _, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), spiIOCWrMode, uintptr(unsafe.Pointer(&mode))); errno != 0 {
 		unix.Close(fd)
 		return nil, fmt.Errorf("set SPI mode: %w", errno)
 	}
 	bits := uint8(8)
-	if _, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), 0x40016b03, uintptr(unsafe.Pointer(&bits))); errno != 0 {
+	if _, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), spiIOCWrBitsPerWord, uintptr(unsafe.Pointer(&bits))); errno != 0 {
 		unix.Close(fd)
 		return nil, fmt.Errorf("set SPI bits: %w", errno)
 	}
