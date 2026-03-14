@@ -3,8 +3,11 @@ package epd
 
 import (
 	"fmt"
-	"unsafe"
 	"golang.org/x/sys/unix"
+	"os"
+	"strconv"
+	"time"
+	"unsafe"
 )
 
 // SPIConn is a write-only SPI connection.
@@ -88,3 +91,69 @@ func (s *linuxSPI) Tx(w []byte) error {
 }
 
 func (s *linuxSPI) Close() error { return unix.Close(s.fd) }
+
+type linuxGPIOOutput struct {
+	pin  int
+	file *os.File
+}
+
+func openGPIOOutput(pin int) (*linuxGPIOOutput, error) {
+	if err := os.WriteFile("/sys/class/gpio/export", []byte(strconv.Itoa(pin)), 0); err != nil {
+		// ignore EBUSY (already exported)
+		if !os.IsExist(err) {
+			// best-effort: continue
+		}
+	}
+	time.Sleep(50 * time.Millisecond) // sysfs node may take a moment
+	dir := fmt.Sprintf("/sys/class/gpio/gpio%d/direction", pin)
+	if err := os.WriteFile(dir, []byte("out"), 0); err != nil {
+		return nil, fmt.Errorf("gpio%d set direction out: %w", pin, err)
+	}
+	val := fmt.Sprintf("/sys/class/gpio/gpio%d/value", pin)
+	f, err := os.OpenFile(val, os.O_WRONLY, 0)
+	if err != nil {
+		return nil, fmt.Errorf("gpio%d open value: %w", pin, err)
+	}
+	return &linuxGPIOOutput{pin: pin, file: f}, nil
+}
+
+func (g *linuxGPIOOutput) Out(high bool) error {
+	v := []byte("0")
+	if high {
+		v = []byte("1")
+	}
+	_, err := g.file.WriteAt(v, 0)
+	return err
+}
+
+func (g *linuxGPIOOutput) Close() error { return g.file.Close() }
+
+type linuxGPIOInput struct {
+	pin  int
+	file *os.File
+}
+
+func openGPIOInput(pin int) (*linuxGPIOInput, error) {
+	if err := os.WriteFile("/sys/class/gpio/export", []byte(strconv.Itoa(pin)), 0); err != nil {
+		// ignore EBUSY
+	}
+	time.Sleep(50 * time.Millisecond)
+	dir := fmt.Sprintf("/sys/class/gpio/gpio%d/direction", pin)
+	if err := os.WriteFile(dir, []byte("in"), 0); err != nil {
+		return nil, fmt.Errorf("gpio%d set direction in: %w", pin, err)
+	}
+	val := fmt.Sprintf("/sys/class/gpio/gpio%d/value", pin)
+	f, err := os.OpenFile(val, os.O_RDONLY, 0)
+	if err != nil {
+		return nil, fmt.Errorf("gpio%d open value: %w", pin, err)
+	}
+	return &linuxGPIOInput{pin: pin, file: f}, nil
+}
+
+func (g *linuxGPIOInput) Read() bool {
+	buf := make([]byte, 1)
+	g.file.ReadAt(buf, 0)
+	return buf[0] == '1'
+}
+
+func (g *linuxGPIOInput) Close() error { return g.file.Close() }

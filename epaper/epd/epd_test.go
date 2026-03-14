@@ -43,3 +43,17 @@ func TestOpenSPIFailsOnMissingDevice(t *testing.T) {
 	}
 }
 
+func TestNewFailsOnMissingDevice(t *testing.T) {
+	_, err := New(Config{
+		SPIDevice: "/dev/spidev_nonexistent",
+		SPISpeed:  4_000_000,
+		PinRST:    17,
+		PinDC:     25,
+		PinCS:     8,
+		PinBUSY:   24,
+	})
+	if err == nil {
+		t.Fatal("expected error for missing SPI device")
+	}
+}
+

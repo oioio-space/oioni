@@ -1,7 +1,10 @@
 // epaper/epd/epd.go
 package epd
 
-import "image"
+import (
+	"fmt"
+	"image"
+)
 
 // Width is the horizontal axis (fast-scan): 122 pixels per row = 16 bytes/row.
 // Height is the vertical axis: 250 rows.
@@ -41,6 +44,44 @@ type Config struct {
 // newDisplay creates a Display from injected HAL components (used in tests).
 func newDisplay(spi SPIConn, rst, dc, cs OutputPin, busy InputPin) *Display {
 	return &Display{spi: spi, rst: rst, dc: dc, cs: cs, busy: busy}
+}
+
+// New creates a Display from a Config, opening all hardware resources.
+func New(cfg Config) (*Display, error) {
+	spi, err := openSPI(cfg.SPIDevice, cfg.SPISpeed)
+	if err != nil {
+		return nil, fmt.Errorf("epd New: %w", err)
+	}
+	rst, err := openGPIOOutput(cfg.PinRST)
+	if err != nil {
+		spi.Close()
+		return nil, fmt.Errorf("epd New RST: %w", err)
+	}
+	dc, err := openGPIOOutput(cfg.PinDC)
+	if err != nil {
+		spi.Close()
+		rst.Close()
+		return nil, fmt.Errorf("epd New DC: %w", err)
+	}
+	cs, err := openGPIOOutput(cfg.PinCS)
+	if err != nil {
+		spi.Close()
+		rst.Close()
+		dc.Close()
+		return nil, fmt.Errorf("epd New CS: %w", err)
+	}
+	busy, err := openGPIOInput(cfg.PinBUSY)
+	if err != nil {
+		spi.Close()
+		rst.Close()
+		dc.Close()
+		cs.Close()
+		return nil, fmt.Errorf("epd New BUSY: %w", err)
+	}
+
+	d := newDisplay(spi, rst, dc, cs, busy)
+	d.closers = []func() error{spi.Close, rst.Close, dc.Close, cs.Close, busy.Close}
+	return d, nil
 }
 
 // Placeholder stubs — implemented in subsequent tasks.
