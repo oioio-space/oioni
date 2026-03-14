@@ -98,13 +98,10 @@ type linuxGPIOOutput struct {
 }
 
 func openGPIOOutput(pin int) (*linuxGPIOOutput, error) {
-	if err := os.WriteFile("/sys/class/gpio/export", []byte(strconv.Itoa(pin)), 0); err != nil {
-		// ignore EBUSY (already exported)
-		if !os.IsExist(err) {
-			// best-effort: continue
-		}
-	}
-	time.Sleep(50 * time.Millisecond) // sysfs node may take a moment
+	// Best-effort export — EBUSY means pin is already exported, which is fine.
+	// Any real problem (e.g. sysfs not available) surfaces on the direction write below.
+	_ = os.WriteFile("/sys/class/gpio/export", []byte(strconv.Itoa(pin)), 0)
+	time.Sleep(50 * time.Millisecond) // sysfs node may take a moment to appear
 	dir := fmt.Sprintf("/sys/class/gpio/gpio%d/direction", pin)
 	if err := os.WriteFile(dir, []byte("out"), 0); err != nil {
 		return nil, fmt.Errorf("gpio%d set direction out: %w", pin, err)
@@ -134,9 +131,7 @@ type linuxGPIOInput struct {
 }
 
 func openGPIOInput(pin int) (*linuxGPIOInput, error) {
-	if err := os.WriteFile("/sys/class/gpio/export", []byte(strconv.Itoa(pin)), 0); err != nil {
-		// ignore EBUSY
-	}
+	_ = os.WriteFile("/sys/class/gpio/export", []byte(strconv.Itoa(pin)), 0) // best-effort
 	time.Sleep(50 * time.Millisecond)
 	dir := fmt.Sprintf("/sys/class/gpio/gpio%d/direction", pin)
 	if err := os.WriteFile(dir, []byte("in"), 0); err != nil {
