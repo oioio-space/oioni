@@ -92,6 +92,10 @@ func (s *linuxSPI) Tx(w []byte) error {
 
 func (s *linuxSPI) Close() error { return unix.Close(s.fd) }
 
+// gpioSysfsDelay is the settle time after exporting a GPIO pin via sysfs.
+// The kernel creates /sys/class/gpio/gpioN/ asynchronously after the export write.
+const gpioSysfsDelay = 50 * time.Millisecond
+
 type linuxGPIOOutput struct {
 	pin  int
 	file *os.File
@@ -101,7 +105,7 @@ func openGPIOOutput(pin int) (*linuxGPIOOutput, error) {
 	// Best-effort export — EBUSY means pin is already exported, which is fine.
 	// Any real problem (e.g. sysfs not available) surfaces on the direction write below.
 	_ = os.WriteFile("/sys/class/gpio/export", []byte(strconv.Itoa(pin)), 0)
-	time.Sleep(50 * time.Millisecond) // sysfs node may take a moment to appear
+	time.Sleep(gpioSysfsDelay)
 	dir := fmt.Sprintf("/sys/class/gpio/gpio%d/direction", pin)
 	if err := os.WriteFile(dir, []byte("out"), 0); err != nil {
 		return nil, fmt.Errorf("gpio%d set direction out: %w", pin, err)
@@ -132,7 +136,7 @@ type linuxGPIOInput struct {
 
 func openGPIOInput(pin int) (*linuxGPIOInput, error) {
 	_ = os.WriteFile("/sys/class/gpio/export", []byte(strconv.Itoa(pin)), 0) // best-effort
-	time.Sleep(50 * time.Millisecond)
+	time.Sleep(gpioSysfsDelay)
 	dir := fmt.Sprintf("/sys/class/gpio/gpio%d/direction", pin)
 	if err := os.WriteFile(dir, []byte("in"), 0); err != nil {
 		return nil, fmt.Errorf("gpio%d set direction in: %w", pin, err)
@@ -145,9 +149,12 @@ func openGPIOInput(pin int) (*linuxGPIOInput, error) {
 	return &linuxGPIOInput{pin: pin, file: f}, nil
 }
 
+// Read returns the current pin level. Errors from ReadAt are intentionally
+// ignored: the InputPin interface is polling-only, and a sysfs read failure
+// returns false (not-busy), which is the fail-safe behaviour for a BUSY pin.
 func (g *linuxGPIOInput) Read() bool {
 	buf := make([]byte, 1)
-	g.file.ReadAt(buf, 0)
+	g.file.ReadAt(buf, 0) //nolint:errcheck
 	return buf[0] == '1'
 }
 
