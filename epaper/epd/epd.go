@@ -22,16 +22,16 @@ const (
 
 // Display drives the EPD_2in13_V4 e-ink panel.
 type Display struct {
-	spi          SPIConn
-	rst, dc, cs  OutputPin
-	busy         InputPin
-	closers      []func() error
+	spi         SPIConn
+	rst, dc, cs OutputPin
+	busy        InputPin
+	closers     []func() error
 }
 
 // Config holds the Linux device paths and BCM pin numbers.
 type Config struct {
-	SPIDevice string  // e.g. "/dev/spidev0.0"
-	SPISpeed  uint32  // e.g. 4_000_000
+	SPIDevice string // e.g. "/dev/spidev0.0"
+	SPISpeed  uint32 // e.g. 4_000_000
 	PinRST    int
 	PinDC     int
 	PinCS     int
@@ -44,9 +44,9 @@ func newDisplay(spi SPIConn, rst, dc, cs OutputPin, busy InputPin) *Display {
 }
 
 // Placeholder stubs — implemented in subsequent tasks.
-func (d *Display) Init(m Mode) error                                    { return nil }
-func (d *Display) DisplayFull(buf []byte) error                         { return nil }
-func (d *Display) DisplayPartial(r image.Rectangle, buf []byte) error   { return nil }
-func (d *Display) DisplayFast(buf []byte) error                         { return nil }
-func (d *Display) Sleep() error                                         { return nil }
-func (d *Display) Close() error                                         { return nil }
+func (d *Display) Init(m Mode) error                                  { return nil }
+func (d *Display) DisplayFull(buf []byte) error                       { return nil }
+func (d *Display) DisplayPartial(r image.Rectangle, buf []byte) error { return nil }
+func (d *Display) DisplayFast(buf []byte) error                       { return nil }
+func (d *Display) Sleep() error                                       { return nil }
+func (d *Display) Close() error                                       { return nil }
