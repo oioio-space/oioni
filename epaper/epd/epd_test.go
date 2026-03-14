@@ -2,6 +2,7 @@
 package epd
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -57,6 +58,19 @@ func TestNewFailsOnMissingDevice(t *testing.T) {
 	}
 }
 
+// failingSPI returns an error on every Tx call.
+type failingSPI struct{}
+
+func (f *failingSPI) Tx(w []byte) error { return fmt.Errorf("spi: bus error") }
+
+func TestInitReturnsErrorOnSPIFailure(t *testing.T) {
+	d := newDisplay(&failingSPI{}, &fakeOutputPin{}, &fakeOutputPin{}, &fakeOutputPin{}, &fakeInputPin{val: false})
+	err := d.Init(ModeFull)
+	if err == nil {
+		t.Fatal("expected error when SPI fails, got nil")
+	}
+}
+
 func TestInitFullSendsReset(t *testing.T) {
 	spi := &fakeSPI{}
 	busy := &fakeInputPin{val: false} // BUSY=low means ready
@@ -81,4 +95,3 @@ func TestInitFullSendsReset(t *testing.T) {
 		t.Error("expected software reset command 0x12 in SPI log")
 	}
 }
-

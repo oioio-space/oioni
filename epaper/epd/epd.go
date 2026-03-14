@@ -30,6 +30,7 @@ type Display struct {
 	rst, dc, cs OutputPin
 	busy        InputPin
 	closers     []func() error
+	firstErr    error // first I/O error from sendCommand/sendData; reset at start of each public method
 }
 
 // Config holds the Linux device paths and BCM pin numbers.
@@ -86,17 +87,47 @@ func New(cfg Config) (*Display, error) {
 }
 
 func (d *Display) sendCommand(cmd byte) {
-	d.dc.Out(false)
-	d.cs.Out(false)
-	d.spi.Tx([]byte{cmd})
-	d.cs.Out(true)
+	if d.firstErr != nil {
+		return
+	}
+	if err := d.dc.Out(false); err != nil {
+		d.firstErr = err
+		return
+	}
+	if err := d.cs.Out(false); err != nil {
+		d.firstErr = err
+		return
+	}
+	if err := d.spi.Tx([]byte{cmd}); err != nil {
+		d.firstErr = err
+		_ = d.cs.Out(true) // best-effort CS release
+		return
+	}
+	if err := d.cs.Out(true); err != nil {
+		d.firstErr = err
+	}
 }
 
 func (d *Display) sendData(data ...byte) {
-	d.dc.Out(true)
-	d.cs.Out(false)
-	d.spi.Tx(data)
-	d.cs.Out(true)
+	if d.firstErr != nil {
+		return
+	}
+	if err := d.dc.Out(true); err != nil {
+		d.firstErr = err
+		return
+	}
+	if err := d.cs.Out(false); err != nil {
+		d.firstErr = err
+		return
+	}
+	if err := d.spi.Tx(data); err != nil {
+		d.firstErr = err
+		_ = d.cs.Out(true) // best-effort CS release
+		return
+	}
+	if err := d.cs.Out(true); err != nil {
+		d.firstErr = err
+	}
 }
 
 func (d *Display) waitBusy() {
@@ -129,6 +160,7 @@ func (d *Display) setCursor(x, y int) {
 }
 
 func (d *Display) Init(m Mode) error {
+	d.firstErr = nil
 	switch m {
 	case ModeFull:
 		d.reset()
@@ -177,7 +209,7 @@ func (d *Display) Init(m Mode) error {
 		d.sendCommand(0x20)
 		d.waitBusy()
 	}
-	return nil
+	return d.firstErr
 }
 
 // Placeholder stubs — implemented in subsequent tasks.
