@@ -57,3 +57,28 @@ func TestNewFailsOnMissingDevice(t *testing.T) {
 	}
 }
 
+func TestInitFullSendsReset(t *testing.T) {
+	spi := &fakeSPI{}
+	busy := &fakeInputPin{val: false} // BUSY=low means ready
+	d := newDisplay(spi, &fakeOutputPin{}, &fakeOutputPin{}, &fakeOutputPin{}, busy)
+
+	if err := d.Init(ModeFull); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	// After init, at least one command must have been sent
+	if len(spi.log) == 0 {
+		t.Fatal("expected SPI commands, got none")
+	}
+	// First meaningful command should be software reset (0x12)
+	found := false
+	for _, pkt := range spi.log {
+		if len(pkt) == 1 && pkt[0] == 0x12 {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected software reset command 0x12 in SPI log")
+	}
+}
+

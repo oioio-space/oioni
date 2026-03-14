@@ -4,6 +4,7 @@ package epd
 import (
 	"fmt"
 	"image"
+	"time"
 )
 
 // Width is the horizontal axis (fast-scan): 122 pixels per row = 16 bytes/row.
@@ -84,8 +85,102 @@ func New(cfg Config) (*Display, error) {
 	return d, nil
 }
 
+func (d *Display) sendCommand(cmd byte) {
+	d.dc.Out(false)
+	d.cs.Out(false)
+	d.spi.Tx([]byte{cmd})
+	d.cs.Out(true)
+}
+
+func (d *Display) sendData(data ...byte) {
+	d.dc.Out(true)
+	d.cs.Out(false)
+	d.spi.Tx(data)
+	d.cs.Out(true)
+}
+
+func (d *Display) waitBusy() {
+	for d.busy.Read() {
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func (d *Display) reset() {
+	d.rst.Out(true)
+	time.Sleep(20 * time.Millisecond)
+	d.rst.Out(false)
+	time.Sleep(2 * time.Millisecond)
+	d.rst.Out(true)
+	time.Sleep(20 * time.Millisecond)
+}
+
+func (d *Display) setWindow(xStart, yStart, xEnd, yEnd int) {
+	d.sendCommand(0x44)
+	d.sendData(byte(xStart/8), byte(xEnd/8))
+	d.sendCommand(0x45)
+	d.sendData(byte(yStart), byte(yStart>>8), byte(yEnd), byte(yEnd>>8))
+}
+
+func (d *Display) setCursor(x, y int) {
+	d.sendCommand(0x4E)
+	d.sendData(byte(x / 8))
+	d.sendCommand(0x4F)
+	d.sendData(byte(y), byte(y>>8))
+}
+
+func (d *Display) Init(m Mode) error {
+	switch m {
+	case ModeFull:
+		d.reset()
+		d.waitBusy()
+		d.sendCommand(0x12) // software reset
+		d.waitBusy()
+		d.sendCommand(0x01) // driver output control
+		d.sendData(byte(Height-1), byte((Height-1)>>8), 0x00)
+		d.sendCommand(0x11) // data entry mode: X inc, Y inc
+		d.sendData(0x03)
+		d.setWindow(0, 0, Width-1, Height-1)
+		d.sendCommand(0x3C) // border waveform
+		d.sendData(0x05)
+		d.sendCommand(0x21) // display update control
+		d.sendData(0x00, 0x80)
+		d.sendCommand(0x18) // temperature sensor: internal
+		d.sendData(0x80)
+		d.setCursor(0, 0)
+		d.waitBusy()
+	case ModePartial:
+		d.reset()
+		d.sendCommand(0x3C)
+		d.sendData(0x80)
+		d.sendCommand(0x01)
+		d.sendData(byte(Height-1), byte((Height-1)>>8), 0x00)
+		d.sendCommand(0x11)
+		d.sendData(0x03)
+		d.setWindow(0, 0, Width-1, Height-1)
+		d.setCursor(0, 0)
+		d.waitBusy()
+	case ModeFast:
+		d.reset()
+		d.waitBusy()
+		d.sendCommand(0x12)
+		d.waitBusy()
+		d.sendCommand(0x18)
+		d.sendData(0x80)
+		d.sendCommand(0x22)
+		d.sendData(0xB1)
+		d.sendCommand(0x20)
+		d.waitBusy()
+		d.sendCommand(0x1A)
+		d.sendData(0x64, 0x00)
+		d.sendCommand(0x22)
+		d.sendData(0x91)
+		d.sendCommand(0x20)
+		d.waitBusy()
+	}
+	return nil
+}
+
 // Placeholder stubs — implemented in subsequent tasks.
-func (d *Display) Init(m Mode) error                                  { return nil }
 func (d *Display) DisplayFull(buf []byte) error                       { return nil }
 func (d *Display) DisplayPartial(r image.Rectangle, buf []byte) error { return nil }
 func (d *Display) DisplayFast(buf []byte) error                       { return nil }
