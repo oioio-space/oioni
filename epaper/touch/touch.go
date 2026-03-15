@@ -81,19 +81,28 @@ func (d *Detector) writeReg(reg uint16, val byte) error {
 	return d.i2c.Tx([]byte{byte(reg >> 8), byte(reg), val}, nil)
 }
 
-func (d *Detector) gt1151Reset() {
-	d.trst.Out(true)
+func (d *Detector) gt1151Reset() error {
+	if err := d.trst.Out(true); err != nil {
+		return err
+	}
 	time.Sleep(100 * time.Millisecond)
-	d.trst.Out(false)
+	if err := d.trst.Out(false); err != nil {
+		return err
+	}
 	time.Sleep(100 * time.Millisecond)
-	d.trst.Out(true)
+	if err := d.trst.Out(true); err != nil {
+		return err
+	}
 	time.Sleep(200 * time.Millisecond)
+	return nil
 }
 
 // Start initialises the GT1151 and launches the event goroutine (Task 8).
 func (d *Detector) Start(ctx context.Context) (<-chan TouchEvent, error) {
 	// Hardware init: reset + verify product ID
-	d.gt1151Reset()
+	if err := d.gt1151Reset(); err != nil {
+		return nil, fmt.Errorf("touch reset: %w", err)
+	}
 	pid, err := d.readReg(regProductID, 4)
 	if err != nil {
 		return nil, fmt.Errorf("GT1151 init: read product ID: %w", err)

@@ -15,6 +15,9 @@ const (
 	BufferSize = ((Width + 7) / 8) * Height // 4000 bytes
 )
 
+// waitBusyTimeout is the maximum time waitBusy() will poll the BUSY pin.
+const waitBusyTimeout = 10 * time.Second
+
 // Mode selects the refresh strategy.
 type Mode uint8
 
@@ -131,17 +134,30 @@ func (d *Display) sendData(data ...byte) {
 }
 
 func (d *Display) waitBusy() {
+	deadline := time.Now().Add(waitBusyTimeout)
 	for d.busy.Read() {
+		if time.Now().After(deadline) {
+			if d.firstErr == nil {
+				d.firstErr = fmt.Errorf("waitBusy: BUSY pin stuck high after %v", waitBusyTimeout)
+			}
+			return
+		}
 		time.Sleep(10 * time.Millisecond)
 	}
 }
 
 func (d *Display) reset() {
-	d.rst.Out(true)
+	if err := d.rst.Out(true); err != nil && d.firstErr == nil {
+		d.firstErr = err
+	}
 	time.Sleep(20 * time.Millisecond)
-	d.rst.Out(false)
+	if err := d.rst.Out(false); err != nil && d.firstErr == nil {
+		d.firstErr = err
+	}
 	time.Sleep(2 * time.Millisecond)
-	d.rst.Out(true)
+	if err := d.rst.Out(true); err != nil && d.firstErr == nil {
+		d.firstErr = err
+	}
 	time.Sleep(20 * time.Millisecond)
 }
 
@@ -252,6 +268,11 @@ func (d *Display) Close() error {
 	return first
 }
 
+// DisplayPartial updates the rectangular region r on the display.
+// buf must contain ceil(r.Dx()/8) × r.Dy() bytes in row-major 1-bit format.
+// r must be in physical (hardware) coordinates (returned by canvas.SubRegion).
+// r.Min.X and r.Max.X must be multiples of 8 (byte-aligned); canvas.SubRegion
+// enforces this automatically.
 func (d *Display) DisplayPartial(r image.Rectangle, buf []byte) error {
 	d.firstErr = nil
 	d.sendCommand(0x44) // set RAM X window

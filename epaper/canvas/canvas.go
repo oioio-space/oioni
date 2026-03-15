@@ -171,8 +171,17 @@ func (c *Canvas) PhysicalRect(r image.Rectangle) image.Rectangle {
 
 // SubRegion extracts a sub-canvas from physical coordinates r.
 // Returns the sub-canvas and the physical rectangle for epd.DisplayPartial.
+// r.Min.X is snapped down and r.Max.X is snapped up to multiples of 8 so that
+// the resulting byte buffer aligns with the EPD's byte-column RAM addressing.
 func (c *Canvas) SubRegion(r image.Rectangle) (*Canvas, image.Rectangle) {
 	r = r.Intersect(image.Rect(0, 0, c.physW, c.physH))
+	// Snap to byte (8-pixel) column boundaries for EPD hardware compatibility.
+	// r.Min.X rounds down, r.Max.X rounds up to keep all requested pixels.
+	r.Min.X = (r.Min.X / 8) * 8
+	if r.Max.X%8 != 0 {
+		r.Max.X = ((r.Max.X + 7) / 8) * 8
+	}
+	r = r.Intersect(image.Rect(0, 0, c.physW, c.physH)) // re-clip after expansion
 	stride := (c.physW + 7) / 8
 	subStride := (r.Dx() + 7) / 8
 	subBuf := make([]byte, subStride*r.Dy())
