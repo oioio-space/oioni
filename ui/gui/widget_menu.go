@@ -117,7 +117,11 @@ func (m *Menu) HandleTouch(pt touch.TouchPoint) bool {
 	if r.Empty() {
 		return false
 	}
-	row := (int(pt.Y) - r.Min.Y) / menuRowHeight
+	px, py := int(pt.X), int(pt.Y)
+	if px < r.Min.X || px >= r.Max.X || py < r.Min.Y || py >= r.Max.Y {
+		return false
+	}
+	row := (py - r.Min.Y) / menuRowHeight
 	idx := m.offset + row
 	if idx < 0 || idx >= len(m.Items) {
 		return false

@@ -108,7 +108,7 @@ func (kb *keyboardWidget) Draw(c *canvas.Canvas) {
 				_, gw, _ := f.Glyph(ch)
 				tx := x + (keyW-gw)/2
 				ty := y + (keyH-f.LineHeight())/2
-				if atMax && ch != ' ' {
+				if atMax {
 					c.DrawText(tx, ty, label, f, canvas.White)
 				} else {
 					c.DrawText(tx, ty, label, f, canvas.Black)
