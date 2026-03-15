@@ -230,3 +230,26 @@ func TestEmbeddedFontSizes(t *testing.T) {
 		}
 	}
 }
+
+func TestToImage(t *testing.T) {
+	c := New(8, 4, Rot0)
+	c.Clear()
+	// Draw a known pattern: black pixel at (0,0)
+	c.SetPixel(0, 0, Black)
+
+	img := c.ToImage()
+
+	// ToImage returns *image.Gray with physical dimensions
+	bounds := img.Bounds()
+	if bounds.Dx() != 8 || bounds.Dy() != 4 {
+		t.Errorf("ToImage bounds = %v, want 8×4", bounds)
+	}
+	// (0,0) should be black (Y=0)
+	if img.GrayAt(0, 0).Y != 0 {
+		t.Errorf("ToImage(0,0) = %d, want 0 (black)", img.GrayAt(0, 0).Y)
+	}
+	// (1,0) should be white (Y=255)
+	if img.GrayAt(1, 0).Y != 255 {
+		t.Errorf("ToImage(1,0) = %d, want 255 (white)", img.GrayAt(1, 0).Y)
+	}
+}
