@@ -35,7 +35,7 @@ func (rm *refreshManager) Render(c *canvas.Canvas, widgets []Widget) error {
 	}
 	// Anti-ghosting: full refresh every antiGhostN partial updates.
 	// counter tracks partials since last full; trigger when it would reach antiGhostN.
-	if rm.counter >= rm.antiGhostN-1 && rm.hasBase {
+	if rm.counter >= rm.antiGhostN && rm.hasBase {
 		return rm.fullRefresh(c, widgets)
 	}
 	return rm.partialRefresh(c, widgets)
@@ -51,10 +51,10 @@ func (rm *refreshManager) RenderWith(c *canvas.Canvas, widgets []Widget, forced 
 }
 
 func (rm *refreshManager) fullRefresh(c *canvas.Canvas, widgets []Widget) error {
-	drawAll(c, widgets)
 	if err := rm.display.Init(epd.ModeFull); err != nil {
 		return err
 	}
+	drawAll(c, widgets)
 	if err := rm.display.DisplayBase(c.Bytes()); err != nil {
 		return err
 	}
@@ -69,7 +69,11 @@ func (rm *refreshManager) partialRefresh(c *canvas.Canvas, widgets []Widget) err
 		// No base established yet — fall back to full.
 		return rm.fullRefresh(c, widgets)
 	}
-	drawAll(c, widgets)
+	for _, w := range widgets {
+		if w.IsDirty() {
+			w.Draw(c)
+		}
+	}
 	if err := rm.display.DisplayPartial(c.Bytes()); err != nil {
 		return err
 	}

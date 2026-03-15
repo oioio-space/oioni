@@ -438,7 +438,7 @@ func TestRefreshManagerAntiGhostCounter(t *testing.T) {
 	rm.RenderWith(c, []Widget{w}, true)
 	initBefore := d.initCalled
 	// Run N partial updates — on the Nth, a full refresh must occur
-	for i := 0; i < rm.antiGhostN; i++ {
+	for i := 0; i <= rm.antiGhostN; i++ {
 		w.SetDirty()
 		rm.Render(c, []Widget{w})
 	}
