@@ -4,6 +4,7 @@ use (
 	.
 	./drivers/epd
 	./drivers/touch
+	./drivers/usbgadget
 	./oioio/builddir/awesomeProject
 	./oioio/builddir/github.com/gokrazy/breakglass
 	./oioio/builddir/github.com/gokrazy/fbstatus
