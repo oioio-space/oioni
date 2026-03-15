@@ -40,6 +40,18 @@ type Touchable interface {
 	HandleTouch(pt touch.TouchPoint) bool // true = event consumed
 }
 
+// Stoppable is implemented by widgets that own background goroutines.
+// Navigator.Pop() calls Stop() recursively on all widgets in a popped scene.
+type Stoppable interface {
+	Stop()
+}
+
+// scrollable is package-internal. Navigator.Run() calls Scroll on widgets
+// that implement it when a SwipeUp or SwipeDown gesture is detected.
+type scrollable interface {
+	Scroll(dy int)
+}
+
 // BaseWidget provides dirty-flag and bounds bookkeeping.
 // Embed in custom widgets and override Draw, PreferredSize, MinSize.
 //
