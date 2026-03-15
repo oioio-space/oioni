@@ -36,7 +36,7 @@ func main() {
 
 	// Image flags
 	imgPath := flag.String("img", "/perm/data.img", "disk image path")
-	imgFSStr := flag.String("img-fs", "vfat", "filesystem: vfat|exfat|ntfs|ext4")
+	imgFSStr := flag.String("img-fs", "vfat", "filesystem: vfat|exfat|ext4")
 	imgSizeMiB := flag.Int64("img-size", 64, "image size in MiB")
 	withImgCreate := flag.Bool("img-create", false, "create and format the image (fails if exists)")
 	withImgWrite := flag.Bool("img-write", false, "open image, write test files via afero, close")
@@ -44,6 +44,9 @@ func main() {
 
 	// Storage hotplug
 	withStorage := flag.Bool("storage", false, "enable USB hotplug storage manager")
+
+	// E-ink display + touch
+	withEPaper := flag.Bool("epaper", false, "enable e-ink display and touch controller")
 
 	flag.Parse()
 
@@ -126,6 +129,15 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// ── E-ink display ─────────────────────────────────────────────────────────
+	var ep *epaperState
+	if *withEPaper {
+		ep = startEPaper(ctx)
+		if ep != nil {
+			defer ep.Close()
+		}
+	}
+
 	if anyGadget {
 		g, err := usbgadget.New(opts...)
 		if err != nil {
@@ -134,6 +146,20 @@ func main() {
 			log.Printf("gadget.Enable: %v (USB inactif, WiFi OK)", err)
 		} else {
 			log.Println("USB gadget actif")
+			var gadgetFuncs []string
+			if *withRNDIS {
+				gadgetFuncs = append(gadgetFuncs, "RNDIS")
+			}
+			if *withECM {
+				gadgetFuncs = append(gadgetFuncs, "ECM")
+			}
+			if *withHID {
+				gadgetFuncs = append(gadgetFuncs, "HID")
+			}
+			if *withMassStorage {
+				gadgetFuncs = append(gadgetFuncs, "Mass")
+			}
+			ep.UpdateStatus(statusLines(true, gadgetFuncs))
 			if rndis != nil {
 				if ifname, err := rndis.IfName(); err == nil {
 					log.Printf("RNDIS → %s", ifname)

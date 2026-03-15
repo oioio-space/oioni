@@ -197,7 +197,14 @@ func (d *Display) Init(m Mode) error {
 		d.setCursor(0, 0)
 		d.waitBusy()
 	case ModePartial:
-		d.reset()
+		// Minimal reset: RST low 1ms → high (matches Waveshare C library Init_PART).
+		if err := d.rst.Out(false); err != nil && d.firstErr == nil {
+			d.firstErr = err
+		}
+		time.Sleep(1 * time.Millisecond)
+		if err := d.rst.Out(true); err != nil && d.firstErr == nil {
+			d.firstErr = err
+		}
 		d.sendCommand(0x3C)
 		d.sendData(0x80)
 		d.sendCommand(0x01)
@@ -206,19 +213,22 @@ func (d *Display) Init(m Mode) error {
 		d.sendData(0x03)
 		d.setWindow(0, 0, Width-1, Height-1)
 		d.setCursor(0, 0)
-		d.waitBusy()
 	case ModeFast:
 		d.reset()
 		d.waitBusy()
-		d.sendCommand(0x12)
+		d.sendCommand(0x12) // software reset
 		d.waitBusy()
-		d.sendCommand(0x18)
+		d.sendCommand(0x18) // temperature sensor: internal
 		d.sendData(0x80)
-		d.sendCommand(0x22)
+		d.sendCommand(0x11) // data entry mode
+		d.sendData(0x03)
+		d.setWindow(0, 0, Width-1, Height-1)
+		d.setCursor(0, 0)
+		d.sendCommand(0x22) // load temperature value
 		d.sendData(0xB1)
 		d.sendCommand(0x20)
 		d.waitBusy()
-		d.sendCommand(0x1A)
+		d.sendCommand(0x1A) // write temperature register (100°C = 0x64)
 		d.sendData(0x64, 0x00)
 		d.sendCommand(0x22)
 		d.sendData(0x91)
