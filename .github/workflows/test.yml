@@ -1,0 +1,44 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: go test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.work
+
+      - name: Test drivers/epd
+        working-directory: drivers/epd
+        run: go test ./...
+
+      - name: Test drivers/touch
+        working-directory: drivers/touch
+        run: go test ./...
+
+      - name: Test drivers/usbgadget
+        working-directory: drivers/usbgadget
+        run: go test ./...
+
+      - name: Test system/storage
+        working-directory: system/storage
+        run: go test ./...
+
+      - name: Test ui/canvas
+        working-directory: ui/canvas
+        run: go test ./...
+
+      - name: Test ui/gui
+        working-directory: ui/gui
+        run: go test ./...
+
+      # imgvol tests require root + ARM64 (loop devices) — skipped in CI

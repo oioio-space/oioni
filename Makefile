@@ -1,4 +1,4 @@
-PARENT_DIR := /home/oioio/Documents/GolandProjects/awesomeProject
+PARENT_DIR := /home/oioio/Documents/GolandProjects/oioni
 INSTANCE   := oioio
 GOK        := GOWORK=off gok --parent_dir $(PARENT_DIR) -i $(INSTANCE)
 SSH_KEY    := $(HOME)/.ssh/id_ed25519
@@ -47,29 +47,37 @@ update: ## Mise à jour OTA via le réseau
 ssh: ## Ouvre un shell SSH sur le Pi
 	ssh -i $(SSH_KEY) root@$(HOST)
 
-logs: ## Stream les logs d'un service  (usage: make logs PKG=awesomeProject/hello)
+logs: ## Stream les logs d'un service  (usage: make logs PKG=github.com/oioio-space/oioni/cmd/oioni)
 	$(GOK) logs --follow $(PKG)
 
 find-pi: ## Vérifie la connectivité avec le Pi (ping)
 	ping -c 3 $(HOST)
 
+test: ## Run unit tests across all modules
+	cd drivers/epd     && go test ./...
+	cd drivers/touch   && go test ./...
+	cd drivers/usbgadget && go test ./...
+	cd system/storage  && go test ./...
+	cd ui/canvas       && go test ./...
+	cd ui/gui          && go test ./...
+
 build-modules: ## Compile les modules kernel ARM64 (USB gadget) pour usbgadget
 	podman build --platform linux/arm64 \
-	    --output type=local,dest=usbgadget/modules/build/out \
-	    usbgadget/modules/build/
+	    --output type=local,dest=drivers/usbgadget/modules/build/out \
+	    drivers/usbgadget/modules/build/
 	@echo "Modules générés :"
-	@ls -lh usbgadget/modules/build/out/6.12.47-v8/*.ko 2>/dev/null || echo "(aucun .ko trouvé)"
-	@cp usbgadget/modules/build/out/6.12.47-v8/*.ko usbgadget/modules/6.12.47-v8/
+	@ls -lh drivers/usbgadget/modules/build/out/6.12.47-v8/*.ko 2>/dev/null || echo "(aucun .ko trouvé)"
+	@cp drivers/usbgadget/modules/build/out/6.12.47-v8/*.ko drivers/usbgadget/modules/6.12.47-v8/
 
 build-imgvol-bins: ## Compile les binaires mkfs statiques ARM64 pour imgvol
 	podman build --platform linux/arm64 \
-	    --output type=local,dest=imgvol/bin \
-	    imgvol/build/
-	@echo "Binaires générés dans imgvol/bin/ :"
-	@ls -lh imgvol/bin/mkfs.* 2>/dev/null || echo "(aucun binaire trouvé — vérifier le Dockerfile)"
-	@file imgvol/bin/mkfs.* 2>/dev/null || true
+	    --output type=local,dest=system/imgvol/bin \
+	    system/imgvol/build/
+	@echo "Binaires générés dans system/imgvol/bin/ :"
+	@ls -lh system/imgvol/bin/mkfs.* 2>/dev/null || echo "(aucun binaire trouvé — vérifier le Dockerfile)"
+	@file system/imgvol/bin/mkfs.* 2>/dev/null || true
 
 build-all: build-modules build-imgvol-bins build ## Build modules + static bins then verify gokrazy compilation
 
 .DEFAULT_GOAL := help
-.PHONY: help flash flash-auto list-sd build update ssh logs find-pi build-modules build-imgvol-bins build-all
+.PHONY: help flash flash-auto list-sd build update ssh logs find-pi test build-modules build-imgvol-bins build-all
