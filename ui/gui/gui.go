@@ -3,6 +3,7 @@ package gui
 
 import (
 	"image"
+	"sync/atomic"
 
 	"github.com/oioio-space/oioni/ui/canvas"
 	"github.com/oioio-space/oioni/drivers/epd"
@@ -65,13 +66,13 @@ type scrollable interface {
 //	func (w *MyWidget) MinSize() image.Point       { return image.Pt(20, 20) }
 type BaseWidget struct {
 	bounds image.Rectangle
-	dirty  bool
+	dirty  atomic.Bool
 }
 
 func (b *BaseWidget) Bounds() image.Rectangle     { return b.bounds }
-func (b *BaseWidget) SetBounds(r image.Rectangle) { b.bounds = r; b.dirty = true }
-func (b *BaseWidget) IsDirty() bool               { return b.dirty }
-func (b *BaseWidget) SetDirty()                   { b.dirty = true }
-func (b *BaseWidget) MarkClean()                  { b.dirty = false }
+func (b *BaseWidget) SetBounds(r image.Rectangle) { b.bounds = r; b.dirty.Store(true) }
+func (b *BaseWidget) IsDirty() bool               { return b.dirty.Load() }
+func (b *BaseWidget) SetDirty()                   { b.dirty.Store(true) }
+func (b *BaseWidget) MarkClean()                  { b.dirty.Store(false) }
 func (b *BaseWidget) PreferredSize() image.Point  { return image.Point{} }
 func (b *BaseWidget) MinSize() image.Point        { return image.Point{} }

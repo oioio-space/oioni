@@ -51,7 +51,6 @@ func (w *ClockWidget) Draw(c *canvas.Canvas) {
 	text := time.Now().Format(w.format)
 	f := canvas.EmbeddedFont(20)
 	if f == nil {
-		w.MarkClean()
 		return
 	}
 	tw := 0

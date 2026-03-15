@@ -585,7 +585,6 @@ func TestNavigator_SwipeLeft_Pops(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	events := make(chan touch.TouchEvent, 2)
 	events <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 100, Y: 60}}}
 	events <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 60, Y: 60}}} // ΔX=-40
@@ -596,21 +595,23 @@ func TestNavigator_SwipeLeft_Pops(t *testing.T) {
 		close(done)
 	}()
 
-	// Wait for swipe to be processed (stack shrinks to 1)
-	deadline := time.After(1 * time.Second)
-	for {
-		if len(nav.stack) == 1 {
-			break
-		}
+	// Wait for Run() to drain the pre-buffered events (swipe detection is immediate,
+	// no timer needed), then cancel and wait for Run() to exit.
+	// Reading len(chan) is safe from any goroutine in Go.
+	deadline := time.After(time.Second)
+	for len(events) > 0 {
 		select {
 		case <-deadline:
-			t.Fatal("timeout waiting for swipe to process")
+			t.Fatal("timeout: events never consumed")
 		default:
-			time.Sleep(10 * time.Millisecond)
+			time.Sleep(5 * time.Millisecond)
 		}
 	}
 	cancel()
-	<-done
+	<-done // Run() has returned — safe to read nav.stack
+	if len(nav.stack) != 1 {
+		t.Fatalf("expected 1 scene after swipe, got %d", len(nav.stack))
+	}
 }
 
 func TestNavigator_SlowTap_NotLost(t *testing.T) {
