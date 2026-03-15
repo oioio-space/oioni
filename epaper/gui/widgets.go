@@ -116,7 +116,7 @@ func (b *Button) PreferredSize() image.Point {
 	return image.Pt(textWidth(b.label, b.font)+16, b.font.LineHeight()+8)
 }
 
-func (b *Button) MinSize() image.Point { return image.Pt(40, 20) }
+func (b *Button) MinSize() image.Point { return image.Pt(20, 20) }
 
 // HandleTouch fires onClick and sets pressed state for visual feedback.
 func (b *Button) HandleTouch(pt touch.TouchPoint) bool {
@@ -180,7 +180,7 @@ func (p *ProgressBar) SetValue(v float64) {
 }
 
 func (p *ProgressBar) PreferredSize() image.Point { return image.Pt(0, 12) }
-func (p *ProgressBar) MinSize() image.Point       { return image.Pt(0, 12) }
+func (p *ProgressBar) MinSize() image.Point       { return image.Pt(20, 8) }
 
 func (p *ProgressBar) Draw(c *canvas.Canvas) {
 	r := p.Bounds()
@@ -207,7 +207,7 @@ func NewStatusBar(left, right string) *StatusBar {
 	s := &StatusBar{
 		left:  left,
 		right: right,
-		font:  canvas.EmbeddedFont(8),
+		font:  canvas.EmbeddedFont(12),
 	}
 	s.SetDirty()
 	return s
@@ -216,15 +216,8 @@ func NewStatusBar(left, right string) *StatusBar {
 func (s *StatusBar) SetLeft(text string)  { s.left = text; s.SetDirty() }
 func (s *StatusBar) SetRight(text string) { s.right = text; s.SetDirty() }
 
-func (s *StatusBar) PreferredSize() image.Point {
-	h := 16
-	if s.font != nil {
-		h = s.font.LineHeight() + 6
-	}
-	return image.Pt(0, h)
-}
-
-func (s *StatusBar) MinSize() image.Point { return s.PreferredSize() }
+func (s *StatusBar) PreferredSize() image.Point { return image.Pt(0, 18) }
+func (s *StatusBar) MinSize() image.Point       { return image.Pt(0, 18) }
 
 func (s *StatusBar) Draw(c *canvas.Canvas) {
 	r := s.Bounds()

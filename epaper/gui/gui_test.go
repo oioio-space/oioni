@@ -334,3 +334,30 @@ func TestDividerPreferredHeight(t *testing.T) {
 		t.Errorf("Divider PreferredSize.Y = %d, want 1", d.PreferredSize().Y)
 	}
 }
+
+func TestButtonPressedStateCycle(t *testing.T) {
+	c := canvas.New(epd.Width, epd.Height, canvas.Rot90)
+	btn := NewButton("OK")
+	btn.SetBounds(image.Rect(0, 0, 60, 20))
+	btn.MarkClean()
+
+	// Touch → pressed=true, dirty=true
+	btn.HandleTouch(touch.TouchPoint{X: 30, Y: 10})
+	if !btn.IsDirty() {
+		t.Error("after HandleTouch, button should be dirty (pressed state)")
+	}
+
+	// First Draw → shows pressed (inverted), clears pressed, sets dirty again
+	btn.MarkClean()
+	btn.Draw(c)
+	if !btn.IsDirty() {
+		t.Error("after first Draw of pressed button, should be dirty again (restore normal state)")
+	}
+
+	// Second Draw → shows normal, no more dirty
+	btn.MarkClean()
+	btn.Draw(c)
+	if btn.IsDirty() {
+		t.Error("after second Draw, button should not be dirty")
+	}
+}
