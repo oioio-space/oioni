@@ -5,6 +5,32 @@ import (
 	"image/color"
 )
 
+// DrawText renders text at logical (x, y) using font f and color col.
+// Glyphs are drawn left-to-right; x advances by the glyph width after each character.
+// Characters whose glyphs extend beyond the canvas are clipped by SetPixel.
+func (c *Canvas) DrawText(x, y int, text string, f Font, col color.Color) {
+	cx := x
+	for _, r := range text {
+		data, gw, gh := f.Glyph(r)
+		if data == nil {
+			// Unknown rune: advance by half the line height.
+			cx += f.LineHeight() / 2
+			continue
+		}
+		stride := (gw + 7) / 8
+		for row := 0; row < gh; row++ {
+			for bit := 0; bit < gw; bit++ {
+				byteIdx := row*stride + bit/8
+				bitIdx := uint(7 - bit%8)
+				if (data[byteIdx]>>bitIdx)&1 == 1 {
+					c.SetPixel(cx+bit, y+row, col)
+				}
+			}
+		}
+		cx += gw
+	}
+}
+
 func (c *Canvas) DrawRect(r image.Rectangle, col color.Color, filled bool) {
 	if filled {
 		for y := r.Min.Y; y < r.Max.Y; y++ {

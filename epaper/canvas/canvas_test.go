@@ -74,3 +74,39 @@ func TestDrawLine(t *testing.T) {
 		}
 	}
 }
+
+func TestDrawText(t *testing.T) {
+	c := New(122, 250, Rot0)
+	c.Clear()
+	f := EmbeddedFont(16)
+	if f == nil {
+		t.Fatal("EmbeddedFont(16) returned nil")
+	}
+	// Font metrics
+	if f.LineHeight() <= 0 {
+		t.Errorf("LineHeight() = %d, want > 0", f.LineHeight())
+	}
+	// Glyph for 'A' must have pixels
+	data, w, h := f.Glyph('A')
+	if data == nil {
+		t.Fatal("Glyph('A') returned nil data")
+	}
+	if w <= 0 || h <= 0 {
+		t.Errorf("Glyph('A') dimensions = %d×%d, want > 0", w, h)
+	}
+	// Drawing 'A' must produce black pixels
+	c.DrawText(0, 0, "A", f, Black)
+	buf := c.Bytes()
+	hasBlack := false
+	for _, b := range buf {
+		if b != 0xFF {
+			hasBlack = true
+			break
+		}
+	}
+	if !hasBlack {
+		t.Error("expected at least one black pixel after DrawText('A')")
+	}
+	// Unknown rune should not panic
+	c.DrawText(0, 0, "\x01", f, Black)
+}
