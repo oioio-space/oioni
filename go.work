@@ -13,4 +13,5 @@ use (
 	./oioio/builddir/github.com/gokrazy/wifi
 	./system/imgvol
 	./system/storage
+	./ui/canvas
 )
