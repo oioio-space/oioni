@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"awesomeProject/epaper/canvas"
-	"awesomeProject/epaper/epd"
 	"awesomeProject/epaper/touch"
 )
 
@@ -80,10 +79,7 @@ func (l *Label) Draw(c *canvas.Canvas) {
 	default: // AlignLeft
 		x = r.Min.X + 2
 	}
-	y := r.Min.Y + (r.Dy()-lh)/2
-	if y < r.Min.Y {
-		y = r.Min.Y
-	}
+	y := max(r.Min.Y, r.Min.Y+(r.Dy()-lh)/2)
 	c.DrawText(x, y, l.text, l.font, canvas.Black)
 }
 
@@ -146,10 +142,7 @@ func (b *Button) Draw(c *canvas.Canvas) {
 	tw := textWidth(b.label, b.font)
 	lh := b.font.LineHeight()
 	x := r.Min.X + (r.Dx()-tw)/2
-	y := r.Min.Y + (r.Dy()-lh)/2
-	if y < r.Min.Y {
-		y = r.Min.Y
-	}
+	y := max(r.Min.Y, r.Min.Y+(r.Dy()-lh)/2)
 	c.DrawText(x, y, b.label, b.font, fg)
 }
 
@@ -169,11 +162,9 @@ func NewProgressBar() *ProgressBar {
 }
 
 func (p *ProgressBar) SetValue(v float64) {
-	if v < 0 {
-		v = 0
-	}
-	if v > 1 {
-		v = 1
+	v = max(0.0, min(v, 1.0))
+	if p.value == v {
+		return
 	}
 	p.value = v
 	p.SetDirty()
@@ -269,7 +260,3 @@ func (d *Divider) Draw(c *canvas.Canvas) {
 		c.DrawLine(r.Min.X, r.Min.Y, r.Max.X, r.Min.Y, canvas.Black) // horizontal
 	}
 }
-
-// Ensure widgets package compiles even without direct epd/touch usage in some paths.
-var _ = epd.ModeFull
-var _ = touch.TouchEvent{}

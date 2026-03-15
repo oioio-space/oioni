@@ -3,6 +3,7 @@ package gui
 
 import (
 	"image"
+	"slices"
 
 	"awesomeProject/epaper/canvas"
 )
@@ -45,252 +46,162 @@ func hintFor(v any) layoutHint {
 // touchableMin is the minimum size enforced for Touchable widgets.
 const touchableMin = 20
 
+// ── box (shared VBox/HBox implementation) ─────────────────────────────────────
+
+// box is the shared layout engine for VBox (vertical=true) and HBox (vertical=false).
+type box struct {
+	BaseWidget
+	vertical bool
+	children []layoutHint
+}
+
+func newBox(vertical bool, children ...any) box {
+	b := box{vertical: vertical}
+	for _, c := range children {
+		b.children = append(b.children, hintFor(c))
+	}
+	b.SetDirty()
+	return b
+}
+
+// mainOf extracts the main-axis component of pt (Y if vertical, X otherwise).
+func (b *box) mainOf(pt image.Point) int {
+	if b.vertical {
+		return pt.Y
+	}
+	return pt.X
+}
+
+// crossOf extracts the cross-axis component of pt (X if vertical, Y otherwise).
+func (b *box) crossOf(pt image.Point) int {
+	if b.vertical {
+		return pt.X
+	}
+	return pt.Y
+}
+
+// mkPt builds a point with the given main and cross components.
+func (b *box) mkPt(main, cross int) image.Point {
+	if b.vertical {
+		return image.Pt(cross, main)
+	}
+	return image.Pt(main, cross)
+}
+
+// childRect builds the child bounding rectangle at pos with the given main-axis size.
+func (b *box) childRect(r image.Rectangle, pos, size int) image.Rectangle {
+	if b.vertical {
+		return image.Rect(r.Min.X, pos, r.Max.X, pos+size)
+	}
+	return image.Rect(pos, r.Min.Y, pos+size, r.Max.Y)
+}
+
+func (b *box) PreferredSize() image.Point {
+	mainSum, crossMax := 0, 0
+	for _, ch := range b.children {
+		ps := ch.widget.PreferredSize()
+		mainSum += b.mainOf(ps)
+		crossMax = max(crossMax, b.crossOf(ps))
+	}
+	return b.mkPt(mainSum, crossMax)
+}
+
+func (b *box) MinSize() image.Point {
+	mainSum, crossMax := 0, 0
+	for _, ch := range b.children {
+		ms := ch.widget.MinSize()
+		mainSum += b.mainOf(ms)
+		crossMax = max(crossMax, b.crossOf(ms))
+	}
+	return b.mkPt(mainSum, crossMax)
+}
+
+func (b *box) SetBounds(r image.Rectangle) {
+	b.BaseWidget.SetBounds(r)
+	b.doLayout(r)
+}
+
+// childMainSize returns the main-axis size for a non-expand child, applying
+// the touchableMin floor for Touchable widgets.
+func (b *box) childMainSize(ch layoutHint) int {
+	var sz int
+	if ch.fixed > 0 {
+		sz = ch.fixed
+	} else {
+		ps := ch.widget.PreferredSize()
+		ms := ch.widget.MinSize()
+		sz = max(b.mainOf(ps), b.mainOf(ms))
+	}
+	if _, ok := ch.widget.(Touchable); ok {
+		sz = max(sz, touchableMin)
+	}
+	return sz
+}
+
+func (b *box) doLayout(r image.Rectangle) {
+	total := b.mainOf(image.Pt(r.Dx(), r.Dy()))
+	startPos := b.mainOf(r.Min)
+
+	// Compute child sizes once to avoid double-calling PreferredSize/MinSize.
+	sizes := make([]int, len(b.children))
+	used, expandCount := 0, 0
+	for i, ch := range b.children {
+		if ch.expand {
+			expandCount++
+		} else {
+			sizes[i] = b.childMainSize(ch)
+			used += sizes[i]
+		}
+	}
+	expandSz := 0
+	if expandCount > 0 && total > used {
+		expandSz = (total - used) / expandCount
+	}
+	pos := startPos
+	for i, ch := range b.children {
+		sz := sizes[i]
+		if ch.expand {
+			sz = expandSz
+		}
+		ch.widget.SetBounds(b.childRect(r, pos, sz))
+		pos += sz
+	}
+}
+
+func (b *box) Draw(c *canvas.Canvas) {
+	for _, ch := range b.children {
+		ch.widget.Draw(c)
+	}
+}
+
+func (b *box) IsDirty() bool {
+	return b.BaseWidget.IsDirty() || slices.ContainsFunc(b.children, func(ch layoutHint) bool {
+		return ch.widget.IsDirty()
+	})
+}
+
+func (b *box) MarkClean() {
+	b.BaseWidget.MarkClean()
+	for _, ch := range b.children {
+		ch.widget.MarkClean()
+	}
+}
+
 // ── VBox ──────────────────────────────────────────────────────────────────────
 
 // VBox stacks children vertically.
 // Children may be Widget or layoutHint (created by Expand/FixedSize).
-type VBox struct {
-	BaseWidget
-	children []layoutHint
-}
+type VBox struct{ box }
 
-func NewVBox(children ...any) *VBox {
-	v := &VBox{}
-	for _, c := range children {
-		v.children = append(v.children, hintFor(c))
-	}
-	v.SetDirty()
-	return v
-}
-
-func (v *VBox) PreferredSize() image.Point {
-	w, h := 0, 0
-	for _, ch := range v.children {
-		ps := ch.widget.PreferredSize()
-		if ps.X > w {
-			w = ps.X
-		}
-		h += ps.Y
-	}
-	return image.Pt(w, h)
-}
-
-func (v *VBox) MinSize() image.Point {
-	w, h := 0, 0
-	for _, ch := range v.children {
-		ms := ch.widget.MinSize()
-		if ms.X > w {
-			w = ms.X
-		}
-		h += ms.Y
-	}
-	return image.Pt(w, h)
-}
-
-func (v *VBox) SetBounds(r image.Rectangle) {
-	v.BaseWidget.SetBounds(r)
-	v.doLayout(r)
-}
-
-func (v *VBox) doLayout(r image.Rectangle) {
-	totalH := r.Dy()
-	used, expandCount := 0, 0
-	for _, ch := range v.children {
-		if ch.expand {
-			expandCount++
-		} else if ch.fixed > 0 {
-			h := ch.fixed
-			if _, ok := ch.widget.(Touchable); ok && h < touchableMin {
-				h = touchableMin
-			}
-			used += h
-		} else {
-			ps := ch.widget.PreferredSize()
-			ms := ch.widget.MinSize()
-			h := ps.Y
-			if h < ms.Y {
-				h = ms.Y
-			}
-			if _, ok := ch.widget.(Touchable); ok && h < touchableMin {
-				h = touchableMin
-			}
-			used += h
-		}
-	}
-	expandH := 0
-	if expandCount > 0 && totalH > used {
-		expandH = (totalH - used) / expandCount
-	}
-	y := r.Min.Y
-	for _, ch := range v.children {
-		var h int
-		if ch.expand {
-			h = expandH
-		} else if ch.fixed > 0 {
-			h = ch.fixed
-		} else {
-			ps := ch.widget.PreferredSize()
-			ms := ch.widget.MinSize()
-			h = ps.Y
-			if h < ms.Y {
-				h = ms.Y
-			}
-		}
-		if _, ok := ch.widget.(Touchable); ok && h < touchableMin {
-			h = touchableMin
-		}
-		ch.widget.SetBounds(image.Rect(r.Min.X, y, r.Max.X, y+h))
-		y += h
-	}
-}
-
-func (v *VBox) Draw(c *canvas.Canvas) {
-	for _, ch := range v.children {
-		ch.widget.Draw(c)
-	}
-}
-
-func (v *VBox) IsDirty() bool {
-	if v.BaseWidget.IsDirty() {
-		return true
-	}
-	for _, ch := range v.children {
-		if ch.widget.IsDirty() {
-			return true
-		}
-	}
-	return false
-}
-
-func (v *VBox) MarkClean() {
-	v.BaseWidget.MarkClean()
-	for _, ch := range v.children {
-		ch.widget.MarkClean()
-	}
-}
+func NewVBox(children ...any) *VBox { return &VBox{newBox(true, children...)} }
 
 // ── HBox ──────────────────────────────────────────────────────────────────────
 
 // HBox distributes children horizontally.
-type HBox struct {
-	BaseWidget
-	children []layoutHint
-}
+// Children may be Widget or layoutHint (created by Expand/FixedSize).
+type HBox struct{ box }
 
-func NewHBox(children ...any) *HBox {
-	h := &HBox{}
-	for _, c := range children {
-		h.children = append(h.children, hintFor(c))
-	}
-	h.SetDirty()
-	return h
-}
-
-func (h *HBox) PreferredSize() image.Point {
-	w, ht := 0, 0
-	for _, ch := range h.children {
-		ps := ch.widget.PreferredSize()
-		w += ps.X
-		if ps.Y > ht {
-			ht = ps.Y
-		}
-	}
-	return image.Pt(w, ht)
-}
-
-func (h *HBox) MinSize() image.Point {
-	w, ht := 0, 0
-	for _, ch := range h.children {
-		ms := ch.widget.MinSize()
-		w += ms.X
-		if ms.Y > ht {
-			ht = ms.Y
-		}
-	}
-	return image.Pt(w, ht)
-}
-
-func (h *HBox) SetBounds(r image.Rectangle) {
-	h.BaseWidget.SetBounds(r)
-	h.doLayout(r)
-}
-
-func (h *HBox) doLayout(r image.Rectangle) {
-	totalW := r.Dx()
-	used, expandCount := 0, 0
-	for _, ch := range h.children {
-		if ch.expand {
-			expandCount++
-		} else if ch.fixed > 0 {
-			w := ch.fixed
-			if _, ok := ch.widget.(Touchable); ok && w < touchableMin {
-				w = touchableMin
-			}
-			used += w
-		} else {
-			ps := ch.widget.PreferredSize()
-			ms := ch.widget.MinSize()
-			w := ps.X
-			if w < ms.X {
-				w = ms.X
-			}
-			if _, ok := ch.widget.(Touchable); ok && w < touchableMin {
-				w = touchableMin
-			}
-			used += w
-		}
-	}
-	expandW := 0
-	if expandCount > 0 && totalW > used {
-		expandW = (totalW - used) / expandCount
-	}
-	x := r.Min.X
-	for _, ch := range h.children {
-		var w int
-		if ch.expand {
-			w = expandW
-		} else if ch.fixed > 0 {
-			w = ch.fixed
-		} else {
-			ps := ch.widget.PreferredSize()
-			ms := ch.widget.MinSize()
-			w = ps.X
-			if w < ms.X {
-				w = ms.X
-			}
-		}
-		if _, ok := ch.widget.(Touchable); ok && w < touchableMin {
-			w = touchableMin
-		}
-		ch.widget.SetBounds(image.Rect(x, r.Min.Y, x+w, r.Max.Y))
-		x += w
-	}
-}
-
-func (h *HBox) Draw(c *canvas.Canvas) {
-	for _, ch := range h.children {
-		ch.widget.Draw(c)
-	}
-}
-
-func (h *HBox) IsDirty() bool {
-	if h.BaseWidget.IsDirty() {
-		return true
-	}
-	for _, ch := range h.children {
-		if ch.widget.IsDirty() {
-			return true
-		}
-	}
-	return false
-}
-
-func (h *HBox) MarkClean() {
-	h.BaseWidget.MarkClean()
-	for _, ch := range h.children {
-		ch.widget.MarkClean()
-	}
-}
+func NewHBox(children ...any) *HBox { return &HBox{newBox(false, children...)} }
 
 // ── Fixed ─────────────────────────────────────────────────────────────────────
 
@@ -326,13 +237,7 @@ func (f *Fixed) SetBounds(r image.Rectangle) {
 	for _, ch := range f.children {
 		ps := ch.widget.PreferredSize()
 		ms := ch.widget.MinSize()
-		cw, ch2 := ps.X, ps.Y
-		if cw < ms.X {
-			cw = ms.X
-		}
-		if ch2 < ms.Y {
-			ch2 = ms.Y
-		}
+		cw, ch2 := max(ps.X, ms.X), max(ps.Y, ms.Y)
 		ch.widget.SetBounds(image.Rect(r.Min.X+ch.x, r.Min.Y+ch.y,
 			r.Min.X+ch.x+cw, r.Min.Y+ch.y+ch2))
 	}
@@ -345,15 +250,9 @@ func (f *Fixed) Draw(c *canvas.Canvas) {
 }
 
 func (f *Fixed) IsDirty() bool {
-	if f.BaseWidget.IsDirty() {
-		return true
-	}
-	for _, ch := range f.children {
-		if ch.widget.IsDirty() {
-			return true
-		}
-	}
-	return false
+	return f.BaseWidget.IsDirty() || slices.ContainsFunc(f.children, func(ch fixedChild) bool {
+		return ch.widget.IsDirty()
+	})
 }
 
 func (f *Fixed) MarkClean() {
@@ -388,13 +287,7 @@ func (o *Overlay) setScreen(w, h int) {
 func (o *Overlay) doLayout() {
 	ps := o.content.PreferredSize()
 	ms := o.content.MinSize()
-	cw, ch := ps.X, ps.Y
-	if cw < ms.X {
-		cw = ms.X
-	}
-	if ch < ms.Y {
-		ch = ms.Y
-	}
+	cw, ch := max(ps.X, ms.X), max(ps.Y, ms.Y)
 	var x, y int
 	switch o.align {
 	case AlignCenter:

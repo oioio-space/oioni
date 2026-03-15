@@ -25,10 +25,10 @@ type Scene struct {
 type SwipeDir int
 
 const (
-	SwipeLeft  SwipeDir = iota
-	SwipeRight SwipeDir = iota
-	SwipeUp    SwipeDir = iota
-	SwipeDown  SwipeDir = iota
+	SwipeLeft SwipeDir = iota
+	SwipeRight
+	SwipeUp
+	SwipeDown
 )
 
 // Navigator manages a stack of Scenes and coordinates touch routing + refresh.
@@ -81,6 +81,12 @@ func (nav *Navigator) Pop() error {
 	if top.OnLeave != nil {
 		top.OnLeave()
 	}
+	// Prune debounce state for widgets in the popped scene.
+	nav.mu.Lock()
+	for _, w := range top.Widgets {
+		delete(nav.lastFire, w)
+	}
+	nav.mu.Unlock()
 	nav.stack = nav.stack[:len(nav.stack)-1]
 	prev := nav.stack[len(nav.stack)-1]
 	if prev.OnEnter != nil {
@@ -151,12 +157,4 @@ func (nav *Navigator) Run(ctx context.Context, events <-chan touch.TouchEvent) {
 	}
 }
 
-func clamp(v, lo, hi int) int {
-	if v < lo {
-		return lo
-	}
-	if v > hi {
-		return hi
-	}
-	return v
-}
+func clamp(v, lo, hi int) int { return max(lo, min(v, hi)) }

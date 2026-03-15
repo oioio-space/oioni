@@ -2,6 +2,8 @@
 package gui
 
 import (
+	"slices"
+
 	"awesomeProject/epaper/canvas"
 	"awesomeProject/epaper/epd"
 )
@@ -23,14 +25,7 @@ func newRefreshManager(d Display) *refreshManager {
 // Render draws dirty widgets and refreshes with the appropriate strategy.
 // Noop if no widget is dirty.
 func (rm *refreshManager) Render(c *canvas.Canvas, widgets []Widget) error {
-	dirty := false
-	for _, w := range widgets {
-		if w.IsDirty() {
-			dirty = true
-			break
-		}
-	}
-	if !dirty {
+	if !slices.ContainsFunc(widgets, func(w Widget) bool { return w.IsDirty() }) {
 		return nil
 	}
 	// Anti-ghosting: full refresh every antiGhostN partial updates.
