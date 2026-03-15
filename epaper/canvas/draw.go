@@ -1,0 +1,96 @@
+package canvas
+
+import (
+	"image"
+	"image/color"
+)
+
+func (c *Canvas) DrawRect(r image.Rectangle, col color.Color, filled bool) {
+	if filled {
+		for y := r.Min.Y; y < r.Max.Y; y++ {
+			for x := r.Min.X; x < r.Max.X; x++ {
+				c.SetPixel(x, y, col)
+			}
+		}
+		return
+	}
+	// Top and bottom edges
+	for x := r.Min.X; x < r.Max.X; x++ {
+		c.SetPixel(x, r.Min.Y, col)
+		c.SetPixel(x, r.Max.Y-1, col)
+	}
+	// Left and right edges
+	for y := r.Min.Y; y < r.Max.Y; y++ {
+		c.SetPixel(r.Min.X, y, col)
+		c.SetPixel(r.Max.X-1, y, col)
+	}
+}
+
+func (c *Canvas) DrawLine(x0, y0, x1, y1 int, col color.Color) {
+	// Bresenham's line algorithm
+	dx := x1 - x0
+	if dx < 0 {
+		dx = -dx
+	}
+	dy := y1 - y0
+	if dy < 0 {
+		dy = -dy
+	}
+	sx, sy := -1, -1
+	if x0 < x1 {
+		sx = 1
+	}
+	if y0 < y1 {
+		sy = 1
+	}
+	err := dx - dy
+	for {
+		c.SetPixel(x0, y0, col)
+		if x0 == x1 && y0 == y1 {
+			break
+		}
+		e2 := 2 * err
+		if e2 > -dy {
+			err -= dy
+			x0 += sx
+		}
+		if e2 < dx {
+			err += dx
+			y0 += sy
+		}
+	}
+}
+
+func (c *Canvas) DrawCircle(cx, cy, radius int, col color.Color, filled bool) {
+	// Midpoint circle algorithm
+	x, y := 0, radius
+	d := 1 - radius
+	for x <= y {
+		if filled {
+			for i := cx - x; i <= cx+x; i++ {
+				c.SetPixel(i, cy+y, col)
+				c.SetPixel(i, cy-y, col)
+			}
+			for i := cx - y; i <= cx+y; i++ {
+				c.SetPixel(i, cy+x, col)
+				c.SetPixel(i, cy-x, col)
+			}
+		} else {
+			for _, p := range [][2]int{
+				{cx + x, cy + y}, {cx - x, cy + y},
+				{cx + x, cy - y}, {cx - x, cy - y},
+				{cx + y, cy + x}, {cx - y, cy + x},
+				{cx + y, cy - x}, {cx - y, cy - x},
+			} {
+				c.SetPixel(p[0], p[1], col)
+			}
+		}
+		if d < 0 {
+			d += 2*x + 3
+		} else {
+			d += 2*(x-y) + 5
+			y--
+		}
+		x++
+	}
+}

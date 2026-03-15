@@ -40,3 +40,37 @@ func TestFill(t *testing.T) {
 		}
 	}
 }
+
+func TestClipInitWithRotation(t *testing.T) {
+	// When created with Rot90, logical size is 250×122, not 122×250
+	c := New(122, 250, Rot90)
+	expectedClip := image.Rect(0, 0, 250, 122) // logical size
+	if c.clip != expectedClip {
+		t.Errorf("BUG: clip initialized with physical dims instead of logical. Got %v, expected %v", c.clip, expectedClip)
+	}
+}
+
+func TestDrawRect(t *testing.T) {
+	c := New(122, 250, Rot0)
+	c.Clear()
+	c.DrawRect(image.Rect(10, 10, 20, 20), Black, false)
+	// Top-left corner pixel must be black
+	if c.At(10, 10) != Black {
+		t.Error("expected pixel (10,10) to be black")
+	}
+	// Interior pixel must be white (outline only)
+	if c.At(15, 15) != White {
+		t.Error("expected interior pixel (15,15) to be white")
+	}
+}
+
+func TestDrawLine(t *testing.T) {
+	c := New(122, 250, Rot0)
+	c.Clear()
+	c.DrawLine(0, 0, 10, 0, Black)
+	for x := 0; x <= 10; x++ {
+		if c.At(x, 0) != Black {
+			t.Errorf("expected pixel (%d,0) to be black", x)
+		}
+	}
+}
