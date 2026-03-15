@@ -1,0 +1,51 @@
+{
+  "Hostname": "oioni",
+  "Update": {
+    "Hostname": "192.168.1.x",
+    "HTTPPassword": "your-password-here"
+  },
+  "Environment": [
+    "GOOS=linux",
+    "GOARCH=arm64"
+  ],
+  "Packages": [
+    "github.com/gokrazy/fbstatus",
+    "github.com/gokrazy/serial-busybox",
+    "github.com/gokrazy/breakglass",
+    "github.com/gokrazy/wifi",
+    "github.com/gokrazy/mkfs",
+    "github.com/oioio-space/oioni/cmd/oioni"
+  ],
+  "PackageConfig": {
+    "github.com/gokrazy/gokrazy/cmd/randomd": {
+      "ExtraFileContents": {
+        "/etc/machine-id": "your-machine-id-here\n"
+      }
+    },
+    "github.com/gokrazy/wifi": {
+      "ExtraFilePaths": {
+        "/etc/wifi.json": "wifi.json"
+      }
+    },
+    "github.com/gokrazy/breakglass": {
+      "CommandLineFlags": [
+        "-authorized_keys=/etc/breakglass.authorized_keys"
+      ],
+      "ExtraFileContents": {
+        "/etc/breakglass.authorized_keys": "ssh-ed25519 YOUR_PUBLIC_KEY_HERE\n"
+      }
+    },
+    "github.com/oioio-space/oioni/cmd/oioni": {
+      "CommandLineFlags": [
+        "-epaper",
+        "-rndis"
+      ]
+    }
+  },
+  "BootloaderExtraLines": [
+    "dtoverlay=dwc2,dr_mode=peripheral",
+    "dtparam=spi=on",
+    "dtparam=i2c_arm=on"
+  ],
+  "SerialConsole": "disabled"
+}

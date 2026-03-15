@@ -1,11 +1,20 @@
-
 # Dolt database files (added by bd init)
 .dolt/
 *.db
 
-# gokrazy build artifacts
+# Gokrazy build artifacts
 oioio/builddir/
+oioio/wifi.json
+oioio/config.json
 *.gaf
 
-# imgvol: static mkfs binaries (built artifacts, not committed)
-imgvol/bin/mkfs.*
+# Compiled binaries (keep mkfs.* and *.ko — they're pre-built for offline use)
+hello/hello
+cmd/oioni/oioni
+
+# Go workspace local overrides
+go.work.local
+
+# IDE
+.idea/
+*.iml
