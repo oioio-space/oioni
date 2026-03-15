@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"awesomeProject/epaper/canvas"
+	"awesomeProject/epaper/epd"
 	"awesomeProject/epaper/touch"
 )
 
@@ -243,5 +244,93 @@ func TestVBoxFixedSizeAllocatesExactHeight(t *testing.T) {
 	}
 	if b.Bounds().Dy() != 40 {
 		t.Errorf("b height = %d, want 40 (FixedSize)", b.Bounds().Dy())
+	}
+}
+
+// ── widget tests ──────────────────────────────────────────────────────────────
+
+func TestLabelSetTextMarksDirty(t *testing.T) {
+	l := NewLabel("hello")
+	l.MarkClean()
+	l.SetText("world")
+	if !l.IsDirty() {
+		t.Error("SetText should mark dirty")
+	}
+}
+
+func TestLabelPreferredSizeUsesFont(t *testing.T) {
+	l := NewLabel("A")
+	ps := l.PreferredSize()
+	if ps.Y == 0 {
+		t.Error("PreferredSize height should be > 0 (font line height)")
+	}
+}
+
+func TestLabelDrawDoesNotPanic(t *testing.T) {
+	c := canvas.New(epd.Width, epd.Height, canvas.Rot90)
+	l := NewLabel("hello")
+	l.SetBounds(image.Rect(0, 0, 100, 20))
+	l.Draw(c) // must not panic, even with nil font
+}
+
+func TestButtonHandleTouchFiresOnClick(t *testing.T) {
+	clicked := false
+	btn := NewButton("OK")
+	btn.OnClick(func() { clicked = true })
+	btn.SetBounds(image.Rect(0, 0, 60, 20))
+	btn.HandleTouch(touch.TouchPoint{X: 30, Y: 10})
+	if !clicked {
+		t.Error("OnClick should fire on HandleTouch")
+	}
+}
+
+func TestButtonDrawDoesNotPanic(t *testing.T) {
+	c := canvas.New(epd.Width, epd.Height, canvas.Rot90)
+	btn := NewButton("OK")
+	btn.SetBounds(image.Rect(0, 0, 60, 20))
+	btn.Draw(c)
+}
+
+func TestProgressBarClamps(t *testing.T) {
+	bar := NewProgressBar()
+	bar.SetValue(1.5)
+	if bar.value != 1.0 {
+		t.Errorf("value clamped to %v, want 1.0", bar.value)
+	}
+	bar.SetValue(-0.5)
+	if bar.value != 0.0 {
+		t.Errorf("value clamped to %v, want 0.0", bar.value)
+	}
+}
+
+func TestProgressBarPreferredSize(t *testing.T) {
+	bar := NewProgressBar()
+	ps := bar.PreferredSize()
+	if ps.Y != 12 {
+		t.Errorf("ProgressBar height = %d, want 12", ps.Y)
+	}
+	if ps.X != 0 {
+		t.Errorf("ProgressBar width = %d, want 0 (use Expand)", ps.X)
+	}
+}
+
+func TestStatusBarDrawDoesNotPanic(t *testing.T) {
+	c := canvas.New(epd.Width, epd.Height, canvas.Rot90)
+	s := NewStatusBar("left", "right")
+	s.SetBounds(image.Rect(0, 0, 250, 16))
+	s.Draw(c)
+}
+
+func TestSpacerPreferredSizeZero(t *testing.T) {
+	s := NewSpacer()
+	if s.PreferredSize() != (image.Point{}) {
+		t.Errorf("Spacer PreferredSize = %v, want (0,0)", s.PreferredSize())
+	}
+}
+
+func TestDividerPreferredHeight(t *testing.T) {
+	d := NewDivider()
+	if d.PreferredSize().Y != 1 {
+		t.Errorf("Divider PreferredSize.Y = %d, want 1", d.PreferredSize().Y)
 	}
 }
