@@ -230,3 +230,18 @@ func TestWithPaddingAddsPadding(t *testing.T) {
 		t.Errorf("inner max x = %d, want 96", inner.Bounds().Max.X)
 	}
 }
+
+func TestVBoxFixedSizeAllocatesExactHeight(t *testing.T) {
+	a := newFixedWidget(100, 20, 0, 0)
+	b := newFixedWidget(100, 20, 0, 0)
+	// b is pinned to 40px regardless of preferred size
+	box := NewVBox(a, FixedSize(b, 40))
+	box.SetBounds(image.Rect(0, 0, 100, 100))
+
+	if a.Bounds().Dy() != 20 {
+		t.Errorf("a height = %d, want 20", a.Bounds().Dy())
+	}
+	if b.Bounds().Dy() != 40 {
+		t.Errorf("b height = %d, want 40 (FixedSize)", b.Bounds().Dy())
+	}
+}

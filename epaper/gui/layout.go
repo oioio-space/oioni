@@ -99,7 +99,11 @@ func (v *VBox) doLayout(r image.Rectangle) {
 		if ch.expand {
 			expandCount++
 		} else if ch.fixed > 0 {
-			used += ch.fixed
+			h := ch.fixed
+			if _, ok := ch.widget.(Touchable); ok && h < touchableMin {
+				h = touchableMin
+			}
+			used += h
 		} else {
 			ps := ch.widget.PreferredSize()
 			ms := ch.widget.MinSize()
@@ -218,7 +222,11 @@ func (h *HBox) doLayout(r image.Rectangle) {
 		if ch.expand {
 			expandCount++
 		} else if ch.fixed > 0 {
-			used += ch.fixed
+			w := ch.fixed
+			if _, ok := ch.widget.(Touchable); ok && w < touchableMin {
+				w = touchableMin
+			}
+			used += w
 		} else {
 			ps := ch.widget.PreferredSize()
 			ms := ch.widget.MinSize()
