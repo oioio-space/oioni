@@ -10,7 +10,14 @@
 
 The existing `ui/gui` package provides a retained-mode GUI framework for the Waveshare 2.13" Touch e-Paper HAT (250×122 px, 1-bit, touch via GT1151). Current widgets: Label, Button, ProgressBar, StatusBar, Spacer, Divider. Layout: VBox, HBox, Fixed, Overlay.
 
-This spec adds 10 new widgets + 3 scene helpers + swipe gesture support + one canvas primitive.
+This spec adds 10 new widgets + 3 scene helpers + swipe gesture support + one canvas primitive + an Icon system.
+
+### Modularity principles
+
+- **Keyboard as reusable component**: the keyboard grid is extracted as a package-internal `keyboardWidget` (a real `Widget`) usable by any scene or future compound widget — not just `ShowTextInput`.
+- **Icon system**: a lightweight `Icon` type wraps either a 1-bit bitmap (embedded bytes) or an `image.Image`. Menu items, buttons, and any future widget can carry an optional icon.
+- **StatusBar anywhere**: `StatusBar` is a generic bar widget — it works identically at the top or bottom of a `VBox`. No positional assumption.
+- **Adaptive sizing**: every widget documents its `PreferredSize()` contract so `Expand` and `VBox`/`HBox` can flex them correctly. Widgets with no intrinsic size return `(0, 0)` and must be wrapped in `Expand` or `FixedSize`.
 
 ---
 
@@ -39,6 +46,7 @@ Implementation: compute scale factor `s = min(float64(r.Dx())/float64(img.Bounds
 
 ```
 ui/gui/
+├── icon.go              ← Icon type (bitmap + image.Image variants)
 ├── widget_toggle.go
 ├── widget_image.go
 ├── widget_clock.go
@@ -46,17 +54,77 @@ ui/gui/
 ├── widget_arc.go
 ├── widget_checkbox.go
 ├── widget_slider.go
-├── widget_menu.go
+├── widget_menu.go       ← MenuItem with optional Icon
 ├── widget_alert.go      ← defines AlertButton type only
-├── widget_textinput.go
-└── helpers.go           ← ShowAlert / ShowMenu / ShowTextInput (all Show* functions here)
+├── widget_keyboard.go   ← reusable keyboardWidget (internal) + KeyboardConfig
+├── widget_textinput.go  ← ShowTextInput uses keyboardWidget
+└── helpers.go           ← ShowAlert / ShowMenu / ShowTextInput
 ```
 
 `ui/gui/gui.go` gains the `Stoppable` and `scrollable` interfaces.
-`ui/gui/navigator.go` modified: `Pop()` calls `Stop()` on stoppable widgets; `Run()` gains swipe detection.
+`ui/gui/navigator.go` modified: `Pop()` calls `Stop()` recursively; `Run()` gains swipe detection.
 `ui/gui/go.mod` gains `rsc.io/qr v0.2.0`.
 
 ---
+
+## Icon System (`icon.go`)
+
+```go
+// Icon is a renderable 1-bit image of fixed logical size.
+// Two constructors cover the two supported sources:
+type Icon struct { /* unexported: w, h int; render func(*canvas.Canvas, image.Rectangle) */ }
+
+// NewBitmapIcon creates an icon from a 1-bit bitmap (packed bytes, MSB-first,
+// same layout as canvas buffer). w×h must match the byte slice length = ((w+7)/8)*h.
+// Use this for embedded assets defined at compile time.
+func NewBitmapIcon(data []byte, w, h int) Icon
+
+// NewImageIcon creates an icon from any image.Image.
+// The image is thresholded to 1-bit at draw time via DrawImageScaled.
+// Use this for icons loaded at runtime (PNG, generated images, etc.).
+func NewImageIcon(img image.Image) Icon
+
+// Draw renders the icon scaled to fit r (letterboxed, centered) onto c.
+func (ic Icon) Draw(c *canvas.Canvas, r image.Rectangle)
+
+// Size returns the icon's natural size in pixels.
+func (ic Icon) Size() (w, h int)
+```
+
+Icons are value types — copy-safe, no pointer receivers.
+
+**Usage in MenuItem:**
+```go
+type MenuItem struct {
+    Label    string
+    Icon     *Icon    // nil = no icon; pointer so zero-value MenuItem has no icon
+    OnSelect func()
+}
+```
+
+When `Icon != nil`, the menu row renders: `[icon 20×20] [label text]`.
+Icon area = 20×20 px (left-padded 2px). Label starts at x+22.
+
+**PreferredSize contract for all widgets:**
+
+| Widget | PreferredSize() | Notes |
+|--------|----------------|-------|
+| Label | (textWidth, lineHeight) | based on font + string |
+| Button | (textWidth+8, lineHeight+4) | padding around label |
+| Toggle | (40, 20) | fixed |
+| Checkbox | (labelWidth+20, 20) | box + gap + label |
+| Slider | (120, 24) | suggested; works at any width ≥ MinSize |
+| ProgressBar | (80, 12) | thin horizontal bar |
+| ProgressArc | (60, 60) | square preferred |
+| StatusBar | (250, 20) | full width preferred; adapts to any width |
+| Menu | (bounds.W, len(Items)*20) | height = all items |
+| ClockWidget | (60, 24) | HH:MM fits; grows with font |
+| QRCode | (80, 80) | square preferred |
+| ImageWidget | (0, 0) | no intrinsic size; must use Expand or FixedSize |
+| Spacer | (0, 0) | flexible by definition |
+| Divider | (0, 1) horizontal / (1, 0) vertical | detected from bounds aspect |
+
+Widgets with `PreferredSize() = (0,0)` should be wrapped in `Expand` or `FixedSize` in layouts.
 
 ## Lifecycle Interfaces (in `gui.go`)
 
@@ -250,9 +318,36 @@ No widget struct — Alert is composed from existing primitives in `ShowAlert`.
 
 ---
 
+### Keyboard Widget (`widget_keyboard.go`)
+
+Package-internal reusable widget — NOT exported. Used by `ShowTextInput` and any future compound widget.
+
+```go
+type keyboardConfig struct {
+    Rows      []string  // each string = chars for that row, len <= 10
+    MaxLen    int
+    OnKey     func(rune)
+    OnBack    func()
+    OnConfirm func()
+}
+type keyboardWidget struct { /* unexported */ }
+func newKeyboard(cfg keyboardConfig) *keyboardWidget
+```
+
+Default character set (5 rows × 10 cols):
+```
+Row 0: A B C D E F G H I J
+Row 1: K L M N O P Q R S T
+Row 2: U V W X Y Z ! @ # $
+Row 3: 0 1 2 3 4 5 6 7 8 9
+Row 4: _ - . / : = ? + ( [SPC]
+```
+
+Key size is computed dynamically from bounds: `keyW = bounds.Dx() / maxCols`, `keyH = bounds.Dy() / len(Rows)`. Caller controls size via layout.
+
 ### TextInput Scene (`widget_textinput.go`)
 
-Not a widget — implementation of the keyboard scene used by `ShowTextInput` (in `helpers.go`).
+Not a widget — a Scene pushed by `ShowTextInput`. Internally composes a 22px header row + `keyboardWidget` filling the remaining 100px.
 
 **Layout — exactly 122px tall, 250px wide:**
 
