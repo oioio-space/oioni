@@ -26,10 +26,12 @@ const (
 )
 
 type epaperState struct {
-	nav      *gui.Navigator
-	status   *gui.StatusBar
-	mu       sync.Mutex
-	cancelFn context.CancelFunc
+	nav       *gui.Navigator
+	status    *gui.StatusBar
+	td        *touch.Detector
+	mu        sync.Mutex
+	cancelFn  context.CancelFunc
+	renderReq chan struct{}
 }
 
 func startEPaper(ctx context.Context) *epaperState {
@@ -89,13 +91,36 @@ func startEPaper(ctx context.Context) *epaperState {
 		return nil
 	}
 
+	renderReq := make(chan struct{}, 1)
+
 	go func() {
-		nav.Run(guiCtx, tc)
-		_ = d.Sleep()
-		_ = d.Close()
+		defer func() {
+			_ = td.Close()
+			_ = d.Sleep()
+			_ = d.Close()
+		}()
+		for {
+			select {
+			case <-guiCtx.Done():
+				return
+			case _, ok := <-tc:
+				if !ok {
+					return
+				}
+				// Touch events are handled by nav.Run internally,
+				// but since we need a custom loop, just call Render on touch too.
+				if err := nav.Render(); err != nil {
+					log.Printf("epaper: touch render: %v", err)
+				}
+			case <-renderReq:
+				if err := nav.Render(); err != nil {
+					log.Printf("epaper: render: %v", err)
+				}
+			}
+		}
 	}()
 
-	return &epaperState{nav: nav, status: status, cancelFn: cancel}
+	return &epaperState{nav: nav, status: status, td: td, cancelFn: cancel, renderReq: renderReq}
 }
 
 // UpdateStatus updates the status bar text and triggers a re-render.
@@ -107,8 +132,10 @@ func (e *epaperState) UpdateStatus(left, right string) {
 	e.status.SetLeft(left)
 	e.status.SetRight(right)
 	e.mu.Unlock()
-	if err := e.nav.Render(); err != nil {
-		log.Printf("epaper: render error: %v", err)
+	// Non-blocking send — if channel is full, a render is already queued.
+	select {
+	case e.renderReq <- struct{}{}:
+	default:
 	}
 }
 
