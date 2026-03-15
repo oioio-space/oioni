@@ -53,6 +53,14 @@ logs: ## Stream les logs d'un service  (usage: make logs PKG=awesomeProject/hell
 find-pi: ## Vérifie la connectivité avec le Pi (ping)
 	ping -c 3 $(HOST)
 
+build-modules: ## Compile les modules kernel ARM64 (USB gadget) pour usbgadget
+	podman build --platform linux/arm64 \
+	    --output type=local,dest=usbgadget/modules/build/out \
+	    usbgadget/modules/build/
+	@echo "Modules générés :"
+	@ls -lh usbgadget/modules/build/out/6.12.47-v8/*.ko 2>/dev/null || echo "(aucun .ko trouvé)"
+	@cp usbgadget/modules/build/out/6.12.47-v8/*.ko usbgadget/modules/6.12.47-v8/
+
 build-imgvol-bins: ## Compile les binaires mkfs statiques ARM64 pour imgvol
 	podman build --platform linux/arm64 \
 	    --output type=local,dest=imgvol/bin \
@@ -61,7 +69,7 @@ build-imgvol-bins: ## Compile les binaires mkfs statiques ARM64 pour imgvol
 	@ls -lh imgvol/bin/mkfs.* 2>/dev/null || echo "(aucun binaire trouvé — vérifier le Dockerfile)"
 	@file imgvol/bin/mkfs.* 2>/dev/null || true
 
-build-all: build-imgvol-bins build ## Build static bins then verify gokrazy compilation
+build-all: build-modules build-imgvol-bins build ## Build modules + static bins then verify gokrazy compilation
 
 .DEFAULT_GOAL := help
-.PHONY: help flash flash-auto list-sd build update ssh logs find-pi build-imgvol-bins build-all
+.PHONY: help flash flash-auto list-sd build update ssh logs find-pi build-modules build-imgvol-bins build-all

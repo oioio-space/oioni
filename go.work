@@ -1,19 +1,12 @@
 go 1.26.0
 
 use (
-	.
-	./cmd/oioni
 	./drivers/epd
 	./drivers/touch
 	./drivers/usbgadget
-	./oioio/builddir/awesomeProject
-	./oioio/builddir/github.com/gokrazy/breakglass
-	./oioio/builddir/github.com/gokrazy/fbstatus
-	./oioio/builddir/github.com/gokrazy/mkfs
-	./oioio/builddir/github.com/gokrazy/serial-busybox
-	./oioio/builddir/github.com/gokrazy/wifi
 	./system/imgvol
 	./system/storage
 	./ui/canvas
 	./ui/gui
+	./cmd/oioni
 )
