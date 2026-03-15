@@ -156,16 +156,97 @@ func (nav *Navigator) handleTouch(pt touch.TouchPoint) {
 // Run starts the touch event loop and blocks until ctx is cancelled.
 // After Run returns, call display.Sleep() then display.Close().
 func (nav *Navigator) Run(ctx context.Context, events <-chan touch.TouchEvent) {
+	var swipePt *touch.TouchPoint
+	var swipeTimer *time.Timer
+	timerCh := func() <-chan time.Time {
+		if swipeTimer != nil {
+			return swipeTimer.C
+		}
+		return nil
+	}
+
+	flush := func() {
+		if swipePt != nil {
+			nav.handleTouch(*swipePt)
+			swipePt = nil
+		}
+		if swipeTimer != nil {
+			swipeTimer.Stop()
+			swipeTimer = nil
+		}
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
+			flush()
 			return
+
+		case <-timerCh():
+			// No second touch arrived within 300ms — treat buffered event as tap.
+			if swipePt != nil {
+				nav.handleTouch(*swipePt)
+				swipePt = nil
+			}
+			swipeTimer = nil
+
 		case ev, ok := <-events:
 			if !ok {
+				flush()
 				return
 			}
 			for _, pt := range ev.Points {
-				nav.handleTouch(pt)
+				if swipePt == nil {
+					// First touch: buffer, start timer.
+					cp := pt
+					swipePt = &cp
+					swipeTimer = time.NewTimer(300 * time.Millisecond)
+					continue
+				}
+				// Second touch within 300ms: classify.
+				swipeTimer.Stop()
+				swipeTimer = nil
+				firstPt := *swipePt // save before clearing
+				swipePt = nil
+				// Cast to int — touch coords may be uint16, negative delta would wrap
+				dx := int(pt.X) - int(firstPt.X)
+				dy := int(pt.Y) - int(firstPt.Y)
+
+				adx := dx
+				if adx < 0 {
+					adx = -adx
+				}
+				ady := dy
+				if ady < 0 {
+					ady = -ady
+				}
+
+				const threshold = 30
+				if adx >= ady && adx > threshold {
+					// Horizontal swipe
+					if dx < 0 {
+						nav.Pop() //nolint
+					}
+					// SwipeRight: reserved, no-op
+				} else if ady > adx && ady > threshold {
+					// Vertical swipe — route to scrollable top widget
+					if len(nav.stack) > 0 {
+						for _, w := range nav.stack[len(nav.stack)-1].Widgets {
+							if s, ok := w.(scrollable); ok {
+								if dy < 0 {
+									s.Scroll(-1)
+								} else {
+									s.Scroll(1)
+								}
+								break
+							}
+						}
+					}
+				} else {
+					// Not a swipe — deliver both touches as taps
+					nav.handleTouch(firstPt)
+					nav.handleTouch(pt)
+				}
 			}
 			nav.Render() //nolint:errcheck
 		}

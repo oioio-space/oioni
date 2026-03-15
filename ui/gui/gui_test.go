@@ -1,8 +1,10 @@
 package gui
 
 import (
+	"context"
 	"image"
 	"testing"
+	"time"
 
 	"github.com/oioio-space/oioni/ui/canvas"
 	"github.com/oioio-space/oioni/drivers/epd"
@@ -562,5 +564,73 @@ func TestNavigatorPopCallsHooksInOrder(t *testing.T) {
 	nav.Pop()
 	if len(calls) != 2 || calls[0] != "s2.Leave" || calls[1] != "s1.Enter" {
 		t.Errorf("hook order = %v, want [s2.Leave s1.Enter]", calls)
+	}
+}
+
+func TestNavigator_SwipeLeft_Pops(t *testing.T) {
+	d := &fakeDisplay{}
+	nav := NewNavigator(d)
+
+	s1 := &Scene{Widgets: []Widget{NewLabel("one")}}
+	s2 := &Scene{Widgets: []Widget{NewLabel("two")}}
+	nav.Push(s1) //nolint
+	nav.Push(s2) //nolint
+
+	if len(nav.stack) != 2 {
+		t.Fatalf("expected 2 scenes, got %d", len(nav.stack))
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	events := make(chan touch.TouchEvent, 2)
+	events <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 100, Y: 60}}}
+	events <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 60, Y: 60}}} // ΔX=-40
+
+	done := make(chan struct{})
+	go func() {
+		nav.Run(ctx, events)
+		close(done)
+	}()
+
+	// Wait for swipe to be processed (stack shrinks to 1)
+	deadline := time.After(1 * time.Second)
+	for {
+		if len(nav.stack) == 1 {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("timeout waiting for swipe to process")
+		default:
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+	cancel()
+	<-done
+}
+
+func TestNavigator_SlowTap_NotLost(t *testing.T) {
+	d := &fakeDisplay{}
+	nav := NewNavigator(d)
+	tapped := false
+	btn := NewButton("ok")
+	btn.OnClick(func() { tapped = true })
+	s := &Scene{Widgets: []Widget{btn}}
+	nav.Push(s) //nolint
+	btn.SetBounds(image.Rect(0, 0, 250, 122))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	events := make(chan touch.TouchEvent, 1)
+	// Single tap with no second event — timer should flush it
+	events <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 60, Y: 10}}}
+	// Give timer (300ms) time to fire, then cancel
+	go func() {
+		time.Sleep(400 * time.Millisecond)
+		cancel()
+	}()
+	nav.Run(ctx, events)
+
+	if !tapped {
+		t.Error("slow single tap should not be lost")
 	}
 }
