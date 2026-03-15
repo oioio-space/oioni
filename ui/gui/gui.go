@@ -1,0 +1,65 @@
+// epaper/gui/gui.go — core interfaces and BaseWidget
+package gui
+
+import (
+	"image"
+
+	"github.com/oioio-space/oioni/ui/canvas"
+	"github.com/oioio-space/oioni/drivers/epd"
+	"github.com/oioio-space/oioni/drivers/touch"
+)
+
+// Display is the subset of *epd.Display used by Navigator.
+// *epd.Display satisfies this interface.
+// Note: DisplayFull is intentionally excluded — it only writes the 0x24 RAM bank,
+// not the 0x26 reference frame, so subsequent DisplayPartial calls would ghost.
+type Display interface {
+	Init(m epd.Mode) error
+	DisplayBase(buf []byte) error    // full refresh: writes 0x24 + 0x26 RAM banks
+	DisplayPartial(buf []byte) error // partial refresh: full 4000-byte buffer, self-contained
+	DisplayFast(buf []byte) error    // fast full refresh
+	Sleep() error
+	Close() error
+}
+
+// Widget is the core interface every GUI element must implement.
+type Widget interface {
+	Draw(c *canvas.Canvas)
+	Bounds() image.Rectangle
+	SetBounds(r image.Rectangle)
+	PreferredSize() image.Point // intrinsic preferred size; (0,0) = no preference
+	MinSize() image.Point       // minimum allocation; layout enforces this floor
+	IsDirty() bool
+	SetDirty()
+	MarkClean()
+}
+
+// Touchable is implemented by interactive widgets.
+// Navigator calls HandleTouch after hit-testing and debounce.
+type Touchable interface {
+	HandleTouch(pt touch.TouchPoint) bool // true = event consumed
+}
+
+// BaseWidget provides dirty-flag and bounds bookkeeping.
+// Embed in custom widgets and override Draw, PreferredSize, MinSize.
+//
+//	type MyWidget struct {
+//	    gui.BaseWidget
+//	    // your fields
+//	}
+//
+//	func (w *MyWidget) Draw(c *canvas.Canvas) { /* draw using w.Bounds() */ }
+//	func (w *MyWidget) PreferredSize() image.Point { return image.Pt(60, 20) }
+//	func (w *MyWidget) MinSize() image.Point       { return image.Pt(20, 20) }
+type BaseWidget struct {
+	bounds image.Rectangle
+	dirty  bool
+}
+
+func (b *BaseWidget) Bounds() image.Rectangle     { return b.bounds }
+func (b *BaseWidget) SetBounds(r image.Rectangle) { b.bounds = r; b.dirty = true }
+func (b *BaseWidget) IsDirty() bool               { return b.dirty }
+func (b *BaseWidget) SetDirty()                   { b.dirty = true }
+func (b *BaseWidget) MarkClean()                  { b.dirty = false }
+func (b *BaseWidget) PreferredSize() image.Point  { return image.Point{} }
+func (b *BaseWidget) MinSize() image.Point        { return image.Point{} }
