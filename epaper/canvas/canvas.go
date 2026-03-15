@@ -40,7 +40,8 @@ func New(physW, physH int, rot Rotation) *Canvas {
 		buf[i] = 0xFF // all white
 	}
 	c := &Canvas{buf: buf, physW: physW, physH: physH, rot: rot}
-	c.clip = image.Rect(0, 0, physW, physH)
+	lw, lh := c.logicalSize()
+	c.clip = image.Rect(0, 0, lw, lh)
 	return c
 }
 
