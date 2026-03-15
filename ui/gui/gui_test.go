@@ -57,6 +57,10 @@ func TestBaseWidgetPreferredAndMinSizeZero(t *testing.T) {
 	}
 }
 
+func newTestCanvas() *canvas.Canvas {
+	return canvas.New(epd.Width, epd.Height, canvas.Rot90)
+}
+
 // ── layout tests ──────────────────────────────────────────────────────────────
 
 // fixedWidget is a test widget with fixed preferred and min sizes.
