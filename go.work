@@ -3,6 +3,7 @@ go 1.26.0
 use (
 	.
 	./drivers/epd
+	./drivers/touch
 	./oioio/builddir/awesomeProject
 	./oioio/builddir/github.com/gokrazy/breakglass
 	./oioio/builddir/github.com/gokrazy/fbstatus
