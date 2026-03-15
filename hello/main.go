@@ -14,6 +14,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -159,7 +160,7 @@ func main() {
 			if *withMassStorage {
 				gadgetFuncs = append(gadgetFuncs, "Mass")
 			}
-			ep.UpdateStatus(statusLines(true, gadgetFuncs))
+			ep.UpdateStatus("USB: "+strings.Join(gadgetFuncs, " "), "")
 			if rndis != nil {
 				if ifname, err := rndis.IfName(); err == nil {
 					log.Printf("RNDIS → %s", ifname)
