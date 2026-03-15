@@ -5,6 +5,27 @@ import (
 	"image/color"
 )
 
+// DrawImage renders src at logical point pt, thresholding to 1-bit at 50% luminance.
+// Pixels with luminance >= 128 are treated as white; below 128 as black.
+// The image is clipped by SetPixel to the canvas bounds and active clip region.
+func (c *Canvas) DrawImage(pt image.Point, img image.Image) {
+	bounds := img.Bounds()
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			col := img.At(x, y)
+			r16, g16, b16, _ := col.RGBA()
+			luma := (3*r16 + 6*g16 + b16) / 10 / 256
+			dx := pt.X + (x - bounds.Min.X)
+			dy := pt.Y + (y - bounds.Min.Y)
+			if luma < 128 {
+				c.SetPixel(dx, dy, Black)
+			} else {
+				c.SetPixel(dx, dy, White)
+			}
+		}
+	}
+}
+
 // DrawText renders text at logical (x, y) using font f and color col.
 // Glyphs are drawn left-to-right; x advances by the glyph width after each character.
 // Characters whose glyphs extend beyond the canvas are clipped by SetPixel.

@@ -1,5 +1,78 @@
 package canvas
 
+import (
+	"image"
+
+	xfont "golang.org/x/image/font"
+	"golang.org/x/image/font/opentype"
+	"golang.org/x/image/math/fixed"
+)
+
+// LoadTTF parses a TrueType font at the given size and DPI and returns
+// a Font that rasterizes glyphs on demand.
+// Requires golang.org/x/image/font/opentype.
+func LoadTTF(data []byte, sizePt float64, dpi float64) (Font, error) {
+	f, err := opentype.Parse(data)
+	if err != nil {
+		return nil, err
+	}
+	face, err := opentype.NewFace(f, &opentype.FaceOptions{
+		Size: sizePt,
+		DPI:  dpi,
+	})
+	if err != nil {
+		return nil, err
+	}
+	metrics := face.Metrics()
+	height := metrics.Height.Ceil()
+	return &ttfFont{face: face, height: height}, nil
+}
+
+type ttfFont struct {
+	face   xfont.Face
+	height int
+}
+
+func (f *ttfFont) LineHeight() int { return f.height }
+
+func (f *ttfFont) Glyph(r rune) (data []byte, width, height int) {
+	// Get advance width
+	advance, ok := f.face.GlyphAdvance(r)
+	if !ok {
+		return nil, 0, 0
+	}
+	w := advance.Ceil()
+	h := f.height
+	if w <= 0 || h <= 0 {
+		return nil, 0, 0
+	}
+
+	// Rasterize to a gray image
+	img := image.NewGray(image.Rect(0, 0, w, h))
+	drawer := &xfont.Drawer{
+		Dst:  img,
+		Src:  image.White,
+		Face: f.face,
+		Dot:  fixed.Point26_6{X: 0, Y: f.face.Metrics().Ascent},
+	}
+	drawer.DrawString(string(r))
+
+	// Threshold to 1-bit, pack MSB-first
+	stride := (w + 7) / 8
+	packed := make([]byte, stride*h)
+	for row := 0; row < h; row++ {
+		for col := 0; col < w; col++ {
+			if img.GrayAt(col, row).Y >= 128 {
+				// white pixel = 1 bit
+				byteIdx := row*stride + col/8
+				bitIdx := uint(7 - col%8)
+				packed[byteIdx] |= 1 << bitIdx
+			}
+		}
+	}
+	return packed, w, h
+}
+
 // Font is the interface for 1-bit bitmap fonts used with DrawText.
 //
 // Glyph data format: row-major, 1-bit-per-pixel packed bytes.

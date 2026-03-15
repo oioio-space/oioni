@@ -2,6 +2,7 @@ package canvas
 
 import (
 	"image"
+	"image/color"
 	"testing"
 )
 
@@ -130,6 +131,48 @@ func TestDrawText(t *testing.T) {
 		if c2.At(8, row) == Black {
 			t.Errorf("unexpected black pixel outside 'A' glyph at col=8, row=%d", row)
 		}
+	}
+}
+
+func TestDrawImage(t *testing.T) {
+	// Create a simple 4×4 source image with known pixel values
+	src := image.NewGray(image.Rect(0, 0, 4, 4))
+	// Top-left 2×2: dark (luminance < 128) → black on canvas
+	src.SetGray(0, 0, color.Gray{Y: 50})
+	src.SetGray(1, 0, color.Gray{Y: 60})
+	src.SetGray(0, 1, color.Gray{Y: 70})
+	src.SetGray(1, 1, color.Gray{Y: 80})
+	// Bottom-right 2×2: bright (luminance >= 128) → white on canvas
+	src.SetGray(2, 2, color.Gray{Y: 200})
+	src.SetGray(3, 2, color.Gray{Y: 210})
+	src.SetGray(2, 3, color.Gray{Y: 220})
+	src.SetGray(3, 3, color.Gray{Y: 230})
+
+	c := New(122, 250, Rot0)
+	c.Clear()
+	c.DrawImage(image.Pt(0, 0), src)
+
+	// Top-left pixels should be black
+	if c.At(0, 0) != Black {
+		t.Error("expected (0,0) to be black")
+	}
+	if c.At(1, 1) != Black {
+		t.Error("expected (1,1) to be black")
+	}
+	// Bottom-right bright pixels should be white (canvas was already white there)
+	if c.At(2, 2) != White {
+		t.Error("expected (2,2) to be white")
+	}
+	// Default (untouched) pixels should be white
+	if c.At(10, 10) != White {
+		t.Error("expected (10,10) to be white (untouched)")
+	}
+}
+
+func TestLoadTTFInvalidData(t *testing.T) {
+	_, err := LoadTTF([]byte("not a font"), 16, 72)
+	if err == nil {
+		t.Error("LoadTTF with invalid data should return an error")
 	}
 }
 
