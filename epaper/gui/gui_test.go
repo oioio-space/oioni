@@ -361,3 +361,88 @@ func TestButtonPressedStateCycle(t *testing.T) {
 		t.Error("after second Draw, button should not be dirty")
 	}
 }
+
+// ── refresh tests ─────────────────────────────────────────────────────────────
+
+// fakeDisplay implements the Display interface for tests — no hardware needed.
+type fakeDisplay struct {
+	initCalled    int
+	baseCalled    int
+	partialCalled int
+	fastCalled    int
+	lastMode      epd.Mode
+}
+
+func (f *fakeDisplay) Init(m epd.Mode) error         { f.initCalled++; f.lastMode = m; return nil }
+func (f *fakeDisplay) DisplayBase(b []byte) error    { f.baseCalled++; return nil }
+func (f *fakeDisplay) DisplayPartial(b []byte) error { f.partialCalled++; return nil }
+func (f *fakeDisplay) DisplayFast(b []byte) error    { f.fastCalled++; return nil }
+func (f *fakeDisplay) Sleep() error                  { return nil }
+func (f *fakeDisplay) Close() error                  { return nil }
+
+func TestRefreshManagerNoop(t *testing.T) {
+	d := &fakeDisplay{}
+	rm := newRefreshManager(d)
+	c := canvas.New(epd.Width, epd.Height, canvas.Rot90)
+	// No dirty widgets — render should be a noop
+	if err := rm.Render(c, nil); err != nil {
+		t.Fatalf("Render noop: %v", err)
+	}
+	if d.partialCalled != 0 || d.baseCalled != 0 {
+		t.Error("expected noop, got display calls")
+	}
+}
+
+func TestRefreshManagerPartialOnDirtyWidget(t *testing.T) {
+	d := &fakeDisplay{}
+	rm := newRefreshManager(d)
+	c := canvas.New(epd.Width, epd.Height, canvas.Rot90)
+	w := NewLabel("test")
+	w.SetBounds(image.Rect(0, 0, 100, 20))
+	// Establish base first
+	rm.RenderWith(c, []Widget{w}, true)
+	d.partialCalled = 0
+	// Dirty widget → partial update
+	w.SetDirty()
+	if err := rm.Render(c, []Widget{w}); err != nil {
+		t.Fatalf("Render partial: %v", err)
+	}
+	if d.partialCalled != 1 {
+		t.Errorf("expected 1 partial call, got %d", d.partialCalled)
+	}
+}
+
+func TestRefreshManagerFullOnForced(t *testing.T) {
+	d := &fakeDisplay{}
+	rm := newRefreshManager(d)
+	c := canvas.New(epd.Width, epd.Height, canvas.Rot90)
+	w := NewLabel("test")
+	w.SetBounds(image.Rect(0, 0, 100, 20))
+	if err := rm.RenderWith(c, []Widget{w}, true); err != nil {
+		t.Fatalf("RenderWith forced: %v", err)
+	}
+	// forced → Init(ModeFull) + DisplayBase
+	if d.initCalled == 0 || d.baseCalled == 0 {
+		t.Error("forced render must call Init(ModeFull)+DisplayBase")
+	}
+}
+
+func TestRefreshManagerAntiGhostCounter(t *testing.T) {
+	d := &fakeDisplay{}
+	rm := newRefreshManager(d)
+	rm.antiGhostN = 3 // low threshold for test
+	c := canvas.New(epd.Width, epd.Height, canvas.Rot90)
+	w := NewLabel("test")
+	w.SetBounds(image.Rect(0, 0, 100, 20))
+	// First forced to establish base
+	rm.RenderWith(c, []Widget{w}, true)
+	initBefore := d.initCalled
+	// Run N partial updates — on the Nth, a full refresh must occur
+	for i := 0; i < rm.antiGhostN; i++ {
+		w.SetDirty()
+		rm.Render(c, []Widget{w})
+	}
+	if d.initCalled <= initBefore {
+		t.Errorf("expected anti-ghost full refresh after %d partial updates", rm.antiGhostN)
+	}
+}
