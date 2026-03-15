@@ -71,6 +71,20 @@ func (nav *Navigator) Push(s *Scene) error {
 	return nav.rm.RenderWith(nav.canvas, s.Widgets, true)
 }
 
+// stopWidgets recursively calls Stop() on any widget implementing Stoppable,
+// walking into layout containers via Children() []Widget.
+func stopWidgets(widgets []Widget) {
+	type hasChildren interface{ Children() []Widget }
+	for _, w := range widgets {
+		if s, ok := w.(Stoppable); ok {
+			s.Stop()
+		}
+		if c, ok := w.(hasChildren); ok {
+			stopWidgets(c.Children())
+		}
+	}
+}
+
 // Pop removes the top scene and restores the previous one.
 // If only one scene is on the stack, Pop is a noop.
 func (nav *Navigator) Pop() error {
@@ -81,6 +95,7 @@ func (nav *Navigator) Pop() error {
 	if top.OnLeave != nil {
 		top.OnLeave()
 	}
+	stopWidgets(top.Widgets)
 	// Prune debounce state for widgets in the popped scene.
 	nav.mu.Lock()
 	for _, w := range top.Widgets {

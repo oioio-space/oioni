@@ -187,6 +187,15 @@ func (b *box) MarkClean() {
 	}
 }
 
+// Children returns the widgets contained in this box (unwrapped from layoutHint).
+func (b *box) Children() []Widget {
+	out := make([]Widget, 0, len(b.children))
+	for _, ch := range b.children {
+		out = append(out, ch.widget)
+	}
+	return out
+}
+
 // ── VBox ──────────────────────────────────────────────────────────────────────
 
 // VBox stacks children vertically.
@@ -262,6 +271,14 @@ func (f *Fixed) MarkClean() {
 	}
 }
 
+func (f *Fixed) Children() []Widget {
+	out := make([]Widget, 0, len(f.children))
+	for _, ch := range f.children {
+		out = append(out, ch.widget)
+	}
+	return out
+}
+
 // ── Overlay ───────────────────────────────────────────────────────────────────
 
 // Overlay positions content on top of the current scene.
@@ -321,6 +338,8 @@ func (o *Overlay) MarkClean() {
 	o.content.MarkClean()
 }
 
+func (o *Overlay) Children() []Widget { return []Widget{o.content} }
+
 // ── WithPadding ───────────────────────────────────────────────────────────────
 
 type paddingWidget struct {
@@ -362,3 +381,5 @@ func (p *paddingWidget) MarkClean() {
 	p.BaseWidget.MarkClean()
 	p.inner.MarkClean()
 }
+
+func (p *paddingWidget) Children() []Widget { return []Widget{p.inner} }
