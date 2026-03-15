@@ -25,9 +25,9 @@ func EmbeddedFont(sizePt int) Font {
 	case 16:
 		return &bitmapFont{data: font16Data, glyphW: 8, glyphH: 16, firstRune: 0x20, lastRune: 0x7E}
 	case 20:
-		return &bitmapFont{data: font20Data, glyphW: 10, glyphH: 20, firstRune: 0x20, lastRune: 0x7E}
+		return &bitmapFont{data: font20Data, glyphW: 8, glyphH: 20, firstRune: 0x20, lastRune: 0x7E}
 	case 24:
-		return &bitmapFont{data: font24Data, glyphW: 12, glyphH: 24, firstRune: 0x20, lastRune: 0x7E}
+		return &bitmapFont{data: font24Data, glyphW: 8, glyphH: 24, firstRune: 0x20, lastRune: 0x7E}
 	}
 	return nil
 }
@@ -747,16 +747,14 @@ var font12Data = []byte{
 }
 
 // ---------------------------------------------------------------------------
-// Font 20 — 10×20, 2 bytes per row, 20 rows = 40 bytes per glyph.
-// Derived by scaling font16 (8×16) to 10×20 conceptually, but stored as
-// the same data with adjusted metadata using a 10-wide × 20-tall layout.
-// For simplicity we store it as 10 bits wide (2 bytes per row, MSB aligned).
+// Font 20 — 8×20, 1 byte per row, 20 rows = 20 bytes per glyph.
+// Derived by scaling font16 (8×16) vertically to 20 rows via nearest-neighbour.
+// Pixel width stays 8 (same as font16).
+//
+// Font 24 — 8×24, 1 byte per row, 24 rows = 24 bytes per glyph.
+// Derived by scaling font16 (8×16) vertically to 24 rows via nearest-neighbour.
 // ---------------------------------------------------------------------------
 
-// font20Data: 2 bytes per row × 20 rows = 40 bytes per glyph.
-// We generate font20 from font16 by repeating rows and padding bits.
-// Each font16 byte row becomes 2 rows in font20, and each 8-bit row
-// is placed in the high 8 bits of a 10-bit row (so high byte = font16 byte, low byte has 2 bits).
 var font20Data []byte
 var font24Data []byte
 
@@ -773,36 +771,31 @@ func init() {
 		font12Data[i] = b << 1
 	}
 
-	// Build font20: scale font16 from 8×16 to 10×20.
-	// Each glyph: 2 bytes per row (10 bits, MSB), 20 rows = 40 bytes.
-	// Strategy: 16 rows → 20 rows by inserting 4 extra rows evenly.
-	// Width: 8 → 10 by padding 2 bits on the right (shift byte left by 2 in 2-byte row).
+	// Build font20: scale font16 from 8×16 to 8×20.
+	// Each glyph: 1 byte per row (8 bits, MSB), 20 rows = 20 bytes.
+	// Pixel width stays 8; only the height is scaled up via nearest-neighbour.
 	font16GlyphCount := int(0x7E-0x20) + 1
-	font20Data = make([]byte, font16GlyphCount*40)
+	font20Rows := 20
+	font20Data = make([]byte, font16GlyphCount*font20Rows)
 	for g := 0; g < font16GlyphCount; g++ {
 		src := font16Data[g*16 : g*16+16]
-		dst := font20Data[g*40 : g*40+40]
-		// Map 16 source rows to 20 dest rows using nearest-neighbour scaling.
-		for dstRow := 0; dstRow < 20; dstRow++ {
-			srcRow := dstRow * 16 / 20
-			b := src[srcRow]
-			// Place b in high byte of 2-byte 10-bit row (b shifted left 0, bit 9..2 = b bits 7..0).
-			dst[dstRow*2+0] = b
-			dst[dstRow*2+1] = 0x00
+		dst := font20Data[g*font20Rows : g*font20Rows+font20Rows]
+		for dstRow := 0; dstRow < font20Rows; dstRow++ {
+			srcRow := dstRow * 16 / font20Rows
+			dst[dstRow] = src[srcRow]
 		}
 	}
 
-	// Build font24: scale font16 from 8×16 to 12×24.
-	// Each glyph: 2 bytes per row (12 bits, MSB), 24 rows = 48 bytes.
-	font24Data = make([]byte, font16GlyphCount*48)
+	// Build font24: scale font16 from 8×16 to 8×24.
+	// Each glyph: 1 byte per row (8 bits, MSB), 24 rows = 24 bytes.
+	font24Rows := 24
+	font24Data = make([]byte, font16GlyphCount*font24Rows)
 	for g := 0; g < font16GlyphCount; g++ {
 		src := font16Data[g*16 : g*16+16]
-		dst := font24Data[g*48 : g*48+48]
-		for dstRow := 0; dstRow < 24; dstRow++ {
-			srcRow := dstRow * 16 / 24
-			b := src[srcRow]
-			dst[dstRow*2+0] = b
-			dst[dstRow*2+1] = 0x00
+		dst := font24Data[g*font24Rows : g*font24Rows+font24Rows]
+		for dstRow := 0; dstRow < font24Rows; dstRow++ {
+			srcRow := dstRow * 16 / font24Rows
+			dst[dstRow] = src[srcRow]
 		}
 	}
 }

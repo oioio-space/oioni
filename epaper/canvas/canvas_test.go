@@ -109,6 +109,28 @@ func TestDrawText(t *testing.T) {
 	}
 	// Unknown rune should not panic
 	c.DrawText(0, 0, "\x01", f, Black)
+
+	// Verify DrawText places pixels in the correct column range for font16 (8×16).
+	c2 := New(122, 250, Rot0)
+	c2.DrawText(0, 0, "A", EmbeddedFont(16), Black)
+	// At least one black pixel must be within the glyph bounding box (cols 0..7, rows 0..15).
+	hasPixelInBounds := false
+	for row := 0; row < 16; row++ {
+		for col := 0; col < 8; col++ {
+			if c2.At(col, row) == Black {
+				hasPixelInBounds = true
+			}
+		}
+	}
+	if !hasPixelInBounds {
+		t.Error("expected black pixel within 'A' glyph bounding box (cols 0-7, rows 0-15)")
+	}
+	// No black pixels should appear at column 8 (one past the 8-wide glyph).
+	for row := 0; row < 16; row++ {
+		if c2.At(8, row) == Black {
+			t.Errorf("unexpected black pixel outside 'A' glyph at col=8, row=%d", row)
+		}
+	}
 }
 
 func TestEmbeddedFontSizes(t *testing.T) {
