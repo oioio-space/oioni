@@ -202,6 +202,39 @@ func TestDrawImageThresholdAndOffset(t *testing.T) {
 	}
 }
 
+func TestDrawImageScaled_2x2To4x4(t *testing.T) {
+	// 2×2 source: top-left black, rest white
+	src := image.NewGray(image.Rect(0, 0, 2, 2))
+	src.SetGray(0, 0, color.Gray{Y: 0})   // black
+	src.SetGray(1, 0, color.Gray{Y: 255}) // white
+	src.SetGray(0, 1, color.Gray{Y: 255}) // white
+	src.SetGray(1, 1, color.Gray{Y: 255}) // white
+
+	c := New(4, 4, Rot0)
+	c.Fill(White)
+	c.DrawImageScaled(image.Rect(0, 0, 4, 4), src)
+
+	img := c.ToImage()
+	// top-left 2×2 should be black (scaled ×2)
+	for y := 0; y < 2; y++ {
+		for x := 0; x < 2; x++ {
+			if img.GrayAt(x, y).Y != 0 {
+				t.Errorf("pixel (%d,%d) should be black", x, y)
+			}
+		}
+	}
+	// top-right pixel should be white
+	if img.GrayAt(2, 0).Y == 0 {
+		t.Error("pixel (2,0) should be white")
+	}
+}
+
+func TestDrawImageScaled_EmptySource(t *testing.T) {
+	c := New(10, 10, Rot0)
+	// empty image — should not panic
+	c.DrawImageScaled(image.Rect(0, 0, 10, 10), image.NewGray(image.Rect(0, 0, 0, 0)))
+}
+
 func TestLoadTTFInvalidData(t *testing.T) {
 	_, err := LoadTTF([]byte("not a font"), 16, 72)
 	if err == nil {

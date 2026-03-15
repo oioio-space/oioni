@@ -26,6 +26,47 @@ func (c *Canvas) DrawImage(pt image.Point, img image.Image) {
 	}
 }
 
+// DrawImageScaled renders img scaled to fit r using nearest-neighbour resampling,
+// then thresholds to 1-bit (luma < 128 → black). Letterboxed and centered.
+// No-op if img bounds or r are empty.
+func (c *Canvas) DrawImageScaled(r image.Rectangle, img image.Image) {
+	sb := img.Bounds()
+	if sb.Empty() || r.Empty() {
+		return
+	}
+	// float64 scale so downscaling works correctly (s < 1)
+	s := min(float64(r.Dx())/float64(sb.Dx()), float64(r.Dy())/float64(sb.Dy()))
+	dw := int(float64(sb.Dx()) * s)
+	dh := int(float64(sb.Dy()) * s)
+	// center in r
+	offX := r.Min.X + (r.Dx()-dw)/2
+	offY := r.Min.Y + (r.Dy()-dh)/2
+
+	for dy := 0; dy < dh; dy++ {
+		for dx := 0; dx < dw; dx++ {
+			srcX := sb.Min.X + clamp(int(float64(dx)/s), 0, sb.Dx()-1)
+			srcY := sb.Min.Y + clamp(int(float64(dy)/s), 0, sb.Dy()-1)
+			r32, g32, b32, _ := img.At(srcX, srcY).RGBA()
+			luma := (19595*r32 + 38470*g32 + 7471*b32) >> 24
+			if luma < 128 {
+				c.SetPixel(offX+dx, offY+dy, Black)
+			} else {
+				c.SetPixel(offX+dx, offY+dy, White)
+			}
+		}
+	}
+}
+
+func clamp(v, lo, hi int) int {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
+}
+
 // DrawText renders text at logical (x, y) using font f and color col.
 // Glyphs are drawn left-to-right; x advances by the glyph width after each character.
 // Characters whose glyphs extend beyond the canvas are clipped by SetPixel.
