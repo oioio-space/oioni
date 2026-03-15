@@ -25,10 +25,21 @@ func TestProgressArc_DrawDoesNotPanic(t *testing.T) {
 }
 
 func TestProgressArc_ZeroAndOne(t *testing.T) {
-	c := newTestCanvas()
 	for _, p := range []float64{0, 1} {
+		c := newTestCanvas()
 		a := NewProgressArc(p)
 		a.SetBounds(image.Rect(0, 0, 60, 60))
-		a.Draw(c) // must not panic
+		a.Draw(c)
+		// Circle outline is always drawn — at least one black pixel must exist
+		found := false
+		for _, b := range c.Bytes() {
+			if b != 0xFF {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("progress=%v: expected at least one black pixel", p)
+		}
 	}
 }
