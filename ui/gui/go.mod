@@ -6,6 +6,7 @@ require (
 	github.com/oioio-space/oioni/drivers/epd v0.0.0-00010101000000-000000000000
 	github.com/oioio-space/oioni/drivers/touch v0.0.0-00010101000000-000000000000
 	github.com/oioio-space/oioni/ui/canvas v0.0.0-00010101000000-000000000000
+	rsc.io/qr v0.2.0
 )
 
 require (
