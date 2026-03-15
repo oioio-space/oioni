@@ -3,7 +3,6 @@ package epd
 
 import (
 	"fmt"
-	"image"
 	"testing"
 )
 
@@ -153,20 +152,18 @@ func TestCloseCallsClosers(t *testing.T) {
 	}
 }
 
-func TestDisplayPartialSendsRegionBuffer(t *testing.T) {
+func TestDisplayPartialSendsFullBuffer(t *testing.T) {
 	spi := &fakeSPI{}
 	busy := &fakeInputPin{val: false}
 	d := newDisplay(spi, &fakeOutputPin{}, &fakeOutputPin{}, &fakeOutputPin{}, busy)
-	d.Init(ModePartial)
 	spi.log = nil
 
-	// 10×10 pixel region at (0,0): ceil(10/8)=2 bytes/row × 10 rows = 20 bytes
-	r := image.Rect(0, 0, 10, 10)
-	buf := make([]byte, 2*10)
+	buf := make([]byte, BufferSize)
 	buf[0] = 0xCD
-	if err := d.DisplayPartial(r, buf); err != nil {
+	if err := d.DisplayPartial(buf); err != nil {
 		t.Fatal(err)
 	}
+	// 0xCD must appear in the SPI log
 	found := false
 	for _, pkt := range spi.log {
 		for _, b := range pkt {
@@ -177,5 +174,62 @@ func TestDisplayPartialSendsRegionBuffer(t *testing.T) {
 	}
 	if !found {
 		t.Error("expected partial buffer content 0xCD in SPI log")
+	}
+	// partial update sequence byte 0xFF must be sent
+	foundFF := false
+	for _, pkt := range spi.log {
+		if len(pkt) == 1 && pkt[0] == 0xFF {
+			foundFF = true
+		}
+	}
+	if !foundFF {
+		t.Error("expected partial update sequence 0xFF in SPI log")
+	}
+}
+
+func TestDisplayBaseSendsToRAMBanks(t *testing.T) {
+	spi := &fakeSPI{}
+	busy := &fakeInputPin{val: false}
+	d := newDisplay(spi, &fakeOutputPin{}, &fakeOutputPin{}, &fakeOutputPin{}, busy)
+	spi.log = nil
+
+	buf := make([]byte, BufferSize)
+	buf[0] = 0xEF
+	if err := d.DisplayBase(buf); err != nil {
+		t.Fatal(err)
+	}
+	// Commands 0x24 (new RAM) and 0x26 (old RAM reference) must both appear
+	var cmds []byte
+	for _, pkt := range spi.log {
+		if len(pkt) == 1 {
+			cmds = append(cmds, pkt[0])
+		}
+	}
+	has24, has26 := false, false
+	for _, c := range cmds {
+		if c == 0x24 {
+			has24 = true
+		}
+		if c == 0x26 {
+			has26 = true
+		}
+	}
+	if !has24 {
+		t.Error("expected write RAM command 0x24 for new frame")
+	}
+	if !has26 {
+		t.Error("expected write RAM command 0x26 for reference frame")
+	}
+	// 0xEF must appear in the SPI log (buffer content)
+	found := false
+	for _, pkt := range spi.log {
+		for _, b := range pkt {
+			if b == 0xEF {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Error("expected buffer content 0xEF in SPI log")
 	}
 }

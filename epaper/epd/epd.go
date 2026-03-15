@@ -3,7 +3,6 @@ package epd
 
 import (
 	"fmt"
-	"image"
 	"time"
 )
 
@@ -278,25 +277,61 @@ func (d *Display) Close() error {
 	return first
 }
 
-// DisplayPartial updates the rectangular region r on the display.
-// buf must contain ceil(r.Dx()/8) × r.Dy() bytes in row-major 1-bit format.
-// r must be in physical (hardware) coordinates (returned by canvas.SubRegion).
-// r.Min.X and r.Max.X must be multiples of 8 (byte-aligned); canvas.SubRegion
-// enforces this automatically.
-func (d *Display) DisplayPartial(r image.Rectangle, buf []byte) error {
+// DisplayBase writes the full framebuffer to both display RAM banks (registers
+// 0x24 and 0x26) and triggers a full refresh. This establishes the reference
+// frame that the hardware compares against during subsequent DisplayPartial calls.
+// Call after Init(ModeFull) before any DisplayPartial sequence.
+// Equivalent to Waveshare's Display_Base / displayPartBaseImage.
+func (d *Display) DisplayBase(buf []byte) error {
 	d.firstErr = nil
-	d.sendCommand(0x44) // set RAM X window
-	d.sendData(byte(r.Min.X/8), byte((r.Max.X-1)/8))
-	d.sendCommand(0x45) // set RAM Y window
-	d.sendData(byte(r.Min.Y), byte(r.Min.Y>>8), byte(r.Max.Y-1), byte((r.Max.Y-1)>>8))
-	d.sendCommand(0x4E) // cursor X
-	d.sendData(byte(r.Min.X / 8))
-	d.sendCommand(0x4F) // cursor Y
-	d.sendData(byte(r.Min.Y), byte(r.Min.Y>>8))
-	d.sendCommand(0x24) // write RAM
+	d.sendCommand(0x24) // write new-image RAM
+	d.sendData(buf...)
+	d.sendCommand(0x26) // write old-image RAM (reference frame)
 	d.sendData(buf...)
 	d.sendCommand(0x22)
-	d.sendData(0xFF)
+	d.sendData(0xF7) // full update sequence
+	d.sendCommand(0x20)
+	d.waitBusy()
+	return d.firstErr
+}
+
+// DisplayPartial sends a full 4000-byte framebuffer and triggers a partial
+// (ghost-free fast) refresh. Every call includes its own mini-reset and
+// partial-mode init sequence, matching the Waveshare reference implementation.
+//
+// Typical usage:
+//
+//	display.Init(epd.ModeFull)
+//	display.DisplayBase(buf)        // establish reference frame
+//	for each update {
+//	    display.DisplayPartial(buf) // ~0.3s, no ghost flush
+//	}
+//	// Every ~50 partial refreshes, do a full self-refresh:
+//	display.Init(epd.ModeFull)
+//	display.DisplayBase(buf)
+func (d *Display) DisplayPartial(buf []byte) error {
+	d.firstErr = nil
+	// Mini-reset required before every partial update (Waveshare reference).
+	if err := d.rst.Out(false); err != nil && d.firstErr == nil {
+		d.firstErr = err
+	}
+	time.Sleep(1 * time.Millisecond)
+	if err := d.rst.Out(true); err != nil && d.firstErr == nil {
+		d.firstErr = err
+	}
+	// Partial-mode init (border, driver output, data entry, window, cursor).
+	d.sendCommand(0x3C)
+	d.sendData(0x80)
+	d.sendCommand(0x01)
+	d.sendData(byte(Height-1), byte((Height-1)>>8), 0x00)
+	d.sendCommand(0x11)
+	d.sendData(0x03)
+	d.setWindow(0, 0, Width-1, Height-1)
+	d.setCursor(0, 0)
+	d.sendCommand(0x24) // write full framebuffer
+	d.sendData(buf...)
+	d.sendCommand(0x22)
+	d.sendData(0xFF) // partial update sequence
 	d.sendCommand(0x20)
 	d.waitBusy()
 	return d.firstErr
