@@ -523,3 +523,44 @@ func TestNavigatorTouchDebounce(t *testing.T) {
 		t.Errorf("rapid touches should be debounced, got %d clicks", count)
 	}
 }
+
+func TestNavigatorPushCallsHooksInOrder(t *testing.T) {
+	d := &fakeDisplay{}
+	nav := NewNavigator(d)
+	var calls []string
+	s1 := &Scene{
+		Widgets: []Widget{NewLabel("s1")},
+		OnLeave: func() { calls = append(calls, "s1.Leave") },
+	}
+	s2 := &Scene{
+		Widgets: []Widget{NewLabel("s2")},
+		OnEnter: func() { calls = append(calls, "s2.Enter") },
+	}
+	nav.Push(s1)
+	calls = nil // reset after first push
+	nav.Push(s2)
+	if len(calls) != 2 || calls[0] != "s1.Leave" || calls[1] != "s2.Enter" {
+		t.Errorf("hook order = %v, want [s1.Leave s2.Enter]", calls)
+	}
+}
+
+func TestNavigatorPopCallsHooksInOrder(t *testing.T) {
+	d := &fakeDisplay{}
+	nav := NewNavigator(d)
+	var calls []string
+	s1 := &Scene{
+		Widgets: []Widget{NewLabel("s1")},
+		OnEnter: func() { calls = append(calls, "s1.Enter") },
+	}
+	s2 := &Scene{
+		Widgets: []Widget{NewLabel("s2")},
+		OnLeave: func() { calls = append(calls, "s2.Leave") },
+	}
+	nav.Push(s1)
+	nav.Push(s2)
+	calls = nil // reset
+	nav.Pop()
+	if len(calls) != 2 || calls[0] != "s2.Leave" || calls[1] != "s1.Enter" {
+		t.Errorf("hook order = %v, want [s2.Leave s1.Enter]", calls)
+	}
+}

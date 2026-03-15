@@ -107,7 +107,8 @@ func (nav *Navigator) handleTouch(pt touch.TouchPoint) {
 		return
 	}
 	scene := nav.stack[len(nav.stack)-1]
-	for _, w := range scene.Widgets {
+	for i := len(scene.Widgets) - 1; i >= 0; i-- {
+		w := scene.Widgets[i]
 		if !logPt.In(w.Bounds()) {
 			continue
 		}
