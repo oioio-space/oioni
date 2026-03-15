@@ -10,7 +10,10 @@ import (
 
 // LoadTTF parses a TrueType font at the given size and DPI and returns
 // a Font that rasterizes glyphs on demand.
-// Requires golang.org/x/image/font/opentype.
+// The returned Font holds an open font.Face for the lifetime of the process.
+// For the intended use case (fonts loaded once at startup), this is acceptable.
+// Callers that need to release the font.Face should use golang.org/x/image/font
+// directly rather than this wrapper.
 func LoadTTF(data []byte, sizePt float64, dpi float64) (Font, error) {
 	f, err := opentype.Parse(data)
 	if err != nil {

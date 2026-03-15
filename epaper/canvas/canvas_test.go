@@ -169,6 +169,39 @@ func TestDrawImage(t *testing.T) {
 	}
 }
 
+func TestDrawImageThresholdAndOffset(t *testing.T) {
+	// Test threshold boundary: Y=127 → black, Y=128 → white
+	src := image.NewGray(image.Rect(0, 0, 2, 1))
+	src.SetGray(0, 0, color.Gray{Y: 127}) // just below threshold → black
+	src.SetGray(1, 0, color.Gray{Y: 128}) // at threshold → white
+
+	c := New(122, 250, Rot0)
+	c.Clear()
+	c.DrawImage(image.Pt(0, 0), src)
+
+	if c.At(0, 0) != Black {
+		t.Error("pixel with Y=127 should be Black (below 128 threshold)")
+	}
+	if c.At(1, 0) != White {
+		t.Error("pixel with Y=128 should be White (at or above 128 threshold)")
+	}
+
+	// Test non-zero destination offset
+	src2 := image.NewGray(image.Rect(0, 0, 1, 1))
+	src2.SetGray(0, 0, color.Gray{Y: 0}) // black pixel
+
+	c2 := New(122, 250, Rot0)
+	c2.Clear()
+	c2.DrawImage(image.Pt(10, 20), src2)
+
+	if c2.At(10, 20) != Black {
+		t.Error("pixel drawn at offset (10,20) should be Black")
+	}
+	if c2.At(0, 0) != White {
+		t.Error("pixel at (0,0) should remain White when drawing at offset (10,20)")
+	}
+}
+
 func TestLoadTTFInvalidData(t *testing.T) {
 	_, err := LoadTTF([]byte("not a font"), 16, 72)
 	if err == nil {
