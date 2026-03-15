@@ -110,3 +110,25 @@ func TestDrawText(t *testing.T) {
 	// Unknown rune should not panic
 	c.DrawText(0, 0, "\x01", f, Black)
 }
+
+func TestEmbeddedFontSizes(t *testing.T) {
+	// All 5 sizes must return non-nil fonts with valid metrics and glyph data.
+	for _, size := range []int{8, 12, 16, 20, 24} {
+		f := EmbeddedFont(size)
+		if f == nil {
+			t.Errorf("EmbeddedFont(%d) returned nil", size)
+			continue
+		}
+		if f.LineHeight() <= 0 {
+			t.Errorf("EmbeddedFont(%d).LineHeight() = %d, want > 0", size, f.LineHeight())
+		}
+		data, w, h := f.Glyph('A')
+		if data == nil {
+			t.Errorf("EmbeddedFont(%d).Glyph('A') returned nil data", size)
+			continue
+		}
+		if w <= 0 || h <= 0 {
+			t.Errorf("EmbeddedFont(%d).Glyph('A') dimensions = %dx%d, want > 0", size, w, h)
+		}
+	}
+}

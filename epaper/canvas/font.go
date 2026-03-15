@@ -761,6 +761,18 @@ var font20Data []byte
 var font24Data []byte
 
 func init() {
+	// Fix font8 (width=5, 1 byte/row): raw data is LSB-aligned (bits 4..0),
+	// but the renderer expects MSB-aligned (bits 7..3). Shift left by 3.
+	for i, b := range font8Data {
+		font8Data[i] = b << 3
+	}
+
+	// Fix font12 (width=7, 1 byte/row): raw data is LSB-aligned (bits 6..0),
+	// but the renderer expects MSB-aligned (bits 7..1). Shift left by 1.
+	for i, b := range font12Data {
+		font12Data[i] = b << 1
+	}
+
 	// Build font20: scale font16 from 8×16 to 10×20.
 	// Each glyph: 2 bytes per row (10 bits, MSB), 20 rows = 40 bytes.
 	// Strategy: 16 rows → 20 rows by inserting 4 extra rows evenly.
