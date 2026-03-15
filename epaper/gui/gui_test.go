@@ -446,3 +446,80 @@ func TestRefreshManagerAntiGhostCounter(t *testing.T) {
 		t.Errorf("expected anti-ghost full refresh after %d partial updates", rm.antiGhostN)
 	}
 }
+
+// ── navigator tests ───────────────────────────────────────────────────────────
+
+func TestNavigatorPushRendersScene(t *testing.T) {
+	d := &fakeDisplay{}
+	nav := NewNavigator(d)
+	l := NewLabel("hello")
+	l.SetBounds(image.Rect(0, 0, 100, 20))
+	s := &Scene{Widgets: []Widget{l}}
+	if err := nav.Push(s); err != nil {
+		t.Fatalf("Push: %v", err)
+	}
+	if d.initCalled == 0 {
+		t.Error("Push must trigger full refresh (Init called)")
+	}
+}
+
+func TestNavigatorPopRestoresPreviousScene(t *testing.T) {
+	d := &fakeDisplay{}
+	nav := NewNavigator(d)
+	s1 := &Scene{Widgets: []Widget{NewLabel("s1")}}
+	s2 := &Scene{Widgets: []Widget{NewLabel("s2")}}
+	nav.Push(s1)
+	nav.Push(s2)
+	if err := nav.Pop(); err != nil {
+		t.Fatalf("Pop: %v", err)
+	}
+	if d.initCalled < 2 {
+		t.Error("Pop must trigger full refresh")
+	}
+}
+
+func TestNavigatorPopOnSingleSceneIsNoop(t *testing.T) {
+	d := &fakeDisplay{}
+	nav := NewNavigator(d)
+	s := &Scene{Widgets: []Widget{NewLabel("root")}}
+	nav.Push(s)
+	if err := nav.Pop(); err != nil {
+		t.Fatalf("Pop on single scene: %v", err)
+	}
+}
+
+func TestNavigatorTouchRoutingCallsHandler(t *testing.T) {
+	d := &fakeDisplay{}
+	nav := NewNavigator(d)
+	clicked := false
+	btn := NewButton("OK")
+	btn.OnClick(func() { clicked = true })
+	// Logical coords: 250 wide x 122 tall. Place button at logical (10,10)-(60,30).
+	btn.SetBounds(image.Rect(10, 10, 60, 30))
+	s := &Scene{Widgets: []Widget{btn}}
+	nav.Push(s)
+	// logX = clamp(pt.Y, 0, 249) = 20 → want inside [10,60)
+	// logY = clamp((122-1)-pt.X, 0, 121) = 121-106 = 15 → want inside [10,30)
+	// So pt.Y=20, pt.X=106
+	nav.handleTouch(touch.TouchPoint{X: 106, Y: 20})
+	if !clicked {
+		t.Error("touch should route to button and fire OnClick")
+	}
+}
+
+func TestNavigatorTouchDebounce(t *testing.T) {
+	d := &fakeDisplay{}
+	nav := NewNavigator(d)
+	count := 0
+	btn := NewButton("OK")
+	btn.OnClick(func() { count++ })
+	btn.SetBounds(image.Rect(0, 0, 250, 122)) // full screen
+	s := &Scene{Widgets: []Widget{btn}}
+	nav.Push(s)
+	// Two rapid touches — second should be debounced
+	nav.handleTouch(touch.TouchPoint{X: 50, Y: 50})
+	nav.handleTouch(touch.TouchPoint{X: 50, Y: 50})
+	if count > 1 {
+		t.Errorf("rapid touches should be debounced, got %d clicks", count)
+	}
+}
