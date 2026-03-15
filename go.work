@@ -12,4 +12,5 @@ use (
 	./oioio/builddir/github.com/gokrazy/serial-busybox
 	./oioio/builddir/github.com/gokrazy/wifi
 	./system/imgvol
+	./system/storage
 )
