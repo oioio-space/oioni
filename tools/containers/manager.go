@@ -171,8 +171,22 @@ func (m *ProcManager) loadImage(path string) error {
 		return ErrPodmanNotFound // podman binary itself not found
 	}
 	// Image not present — load from file.
+	// Use /perm/tmp as TMPDIR: podman needs temp space proportional to the
+	// uncompressed image size. /tmp is a tmpfs limited by RAM; /perm (SD card)
+	// has ample space for a ~125 MiB image.
+	if err := os.MkdirAll("/perm/tmp", 0o700); err != nil {
+		return fmt.Errorf("containers: mkdir /perm/tmp: %w", err)
+	}
 	loadCmd := m.cmdFactory("podman", "load", "-i", path)
 	loadCmd.Stderr = os.Stderr // surface podman errors to gokrazy logs
+	// Override TMPDIR in the child env to use /perm/tmp.
+	env := make([]string, 0, len(loadCmd.Env))
+	for _, v := range loadCmd.Env {
+		if !strings.HasPrefix(v, "TMPDIR=") {
+			env = append(env, v)
+		}
+	}
+	loadCmd.Env = append(env, "TMPDIR=/perm/tmp")
 	if err := loadCmd.Run(); err != nil {
 		if isNotFound(err) {
 			return ErrPodmanNotFound
