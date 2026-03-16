@@ -69,40 +69,59 @@ func NewManager(cfg Config, opts ...Option) *ProcManager {
 	return m
 }
 
-// gokrazy installs podman to /usr/local/bin which is not always in PATH.
-// defaultCmdFactory prepends /user:/usr/local/bin and sets TMPDIR=/tmp so
-// podman is found and uses a writable temp directory (required on gokrazy).
+// gokrazySearchDirs lists directories where gokrazy installs binaries, in order.
+// podman lives in /usr/local/bin; other helpers (busybox, etc.) in /user.
+var gokrazySearchDirs = []string{"/user", "/usr/local/bin", "/usr/bin", "/bin"}
+
+// defaultCmdFactory resolves the binary against gokrazy search dirs before
+// calling exec.Command — exec.LookPath uses the parent process PATH which may
+// not include /usr/local/bin on gokrazy.
 func defaultCmdFactory(name string, args ...string) *exec.Cmd {
-	cmd := exec.Command(name, args...)
-	env := gokrazyPath(os.Environ())
-	// Ensure TMPDIR is writable — /tmp is tmpfs on gokrazy, unlike the read-only rootfs.
-	hasTMPDIR := false
-	for _, v := range env {
+	resolved := resolveBinary(name)
+	cmd := exec.Command(resolved, args...)
+	cmd.Env = gokrazyEnv(os.Environ())
+	return cmd
+}
+
+// resolveBinary finds name in gokrazySearchDirs, falling back to the bare name
+// (which lets exec.Command return a clear "not found" error).
+func resolveBinary(name string) string {
+	if strings.ContainsRune(name, '/') {
+		return name // already an absolute or relative path
+	}
+	for _, dir := range gokrazySearchDirs {
+		if _, err := os.Stat(dir + "/" + name); err == nil {
+			return dir + "/" + name
+		}
+	}
+	return name // not found — exec.Command will return exec.ErrNotFound
+}
+
+// gokrazyEnv returns env with /user:/usr/local/bin prepended to PATH and
+// TMPDIR=/tmp ensured (podman requires a writable temp dir, /tmp on gokrazy).
+func gokrazyEnv(env []string) []string {
+	const extra = "/user:/usr/local/bin"
+	hasPath, hasTMPDIR := false, false
+	for i, v := range env {
+		if strings.HasPrefix(v, "PATH=") {
+			env[i] = "PATH=" + extra + ":" + v[5:]
+			hasPath = true
+		}
 		if strings.HasPrefix(v, "TMPDIR=") {
 			hasTMPDIR = true
-			break
 		}
+	}
+	if !hasPath {
+		env = append(env, "PATH="+extra+":/usr/local/sbin:/sbin:/usr/sbin:/bin:/usr/bin")
 	}
 	if !hasTMPDIR {
 		env = append(env, "TMPDIR=/tmp")
 	}
-	cmd.Env = env
-	return cmd
+	return env
 }
 
-// gokrazyPath ensures /user and /usr/local/bin are at the front of PATH so
-// that gokrazy-installed binaries (podman, busybox, etc.) are found.
-func gokrazyPath(env []string) []string {
-	const extra = "/user:/usr/local/bin"
-	for i, v := range env {
-		if strings.HasPrefix(v, "PATH=") {
-			env[i] = "PATH=" + extra + ":" + v[5:]
-			return env
-		}
-	}
-	// No PATH set — use busybox default plus gokrazy paths.
-	return append(env, "PATH="+extra+":/usr/local/sbin:/sbin:/usr/sbin:/bin:/usr/bin")
-}
+// gokrazyPath is an alias kept for backward compatibility.
+func gokrazyPath(env []string) []string { return gokrazyEnv(env) }
 
 // initContainer loads or pulls the image, then starts the long-running container.
 // Called exactly once via sync.Once.
