@@ -14,7 +14,7 @@
 		"github.com/gokrazy/breakglass",
 		"github.com/gokrazy/wifi",
 		"github.com/gokrazy/mkfs",
-		"awesomeProject/hello"
+		"github.com/oioio-space/oioni/cmd/oioni"
 	],
 	"PackageConfig": {
 		"github.com/gokrazy/gokrazy/cmd/randomd": {
@@ -35,7 +35,7 @@
 				"/etc/breakglass.authorized_keys": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMTRUHZxjWLlN4Vrg9CEdZCrwMvvaJ8dOpSzna/Nr/K6 oioio-pizero\n"
 			}
 		},
-		"awesomeProject/hello": {
+		"github.com/oioio-space/oioni/cmd/oioni": {
 			"CommandLineFlags": [
 				"-epaper"
 			]
