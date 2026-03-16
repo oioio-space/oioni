@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -16,10 +17,11 @@ import (
 
 // Config describes a managed container.
 type Config struct {
-	Image   string   // e.g. "oioni/impacket:arm64"
-	Name    string   // container name, unique per instance
-	Network string   // "host" for USB gadget interface access
-	Caps    []string // Linux capabilities, e.g. ["NET_RAW", "NET_ADMIN"]
+	Image          string   // e.g. "oioni/impacket:arm64"
+	Name           string   // container name, unique per instance
+	Network        string   // "host" for USB gadget interface access
+	Caps           []string // Linux capabilities, e.g. ["NET_RAW", "NET_ADMIN"]
+	LocalImagePath string   // if set, load image from this .tar/.tar.gz instead of pulling
 }
 
 // Option is a functional option for NewManager.
@@ -67,21 +69,58 @@ func NewManager(cfg Config, opts ...Option) *ProcManager {
 	return m
 }
 
+// gokrazy installs podman to /usr/local/bin which is not always in PATH.
+// defaultCmdFactory prepends /user:/usr/local/bin and sets TMPDIR=/tmp so
+// podman is found and uses a writable temp directory (required on gokrazy).
 func defaultCmdFactory(name string, args ...string) *exec.Cmd {
-	return exec.Command(name, args...)
+	cmd := exec.Command(name, args...)
+	env := gokrazyPath(os.Environ())
+	// Ensure TMPDIR is writable — /tmp is tmpfs on gokrazy, unlike the read-only rootfs.
+	hasTMPDIR := false
+	for _, v := range env {
+		if strings.HasPrefix(v, "TMPDIR=") {
+			hasTMPDIR = true
+			break
+		}
+	}
+	if !hasTMPDIR {
+		env = append(env, "TMPDIR=/tmp")
+	}
+	cmd.Env = env
+	return cmd
 }
 
-// initContainer pulls the image and starts the long-running container.
+// gokrazyPath ensures /user and /usr/local/bin are at the front of PATH so
+// that gokrazy-installed binaries (podman, busybox, etc.) are found.
+func gokrazyPath(env []string) []string {
+	const extra = "/user:/usr/local/bin"
+	for i, v := range env {
+		if strings.HasPrefix(v, "PATH=") {
+			env[i] = "PATH=" + extra + ":" + v[5:]
+			return env
+		}
+	}
+	// No PATH set — use busybox default plus gokrazy paths.
+	return append(env, "PATH="+extra+":/usr/local/sbin:/sbin:/usr/sbin:/bin:/usr/bin")
+}
+
+// initContainer loads or pulls the image, then starts the long-running container.
 // Called exactly once via sync.Once.
 func (m *ProcManager) initContainer(ctx context.Context) error {
-	// Pull image
-	pullCmd := m.cmdFactory("podman", "pull", m.cfg.Image)
-	pullCmd.Stderr = io.Discard
-	if err := pullCmd.Run(); err != nil {
-		if isNotFound(err) {
-			return ErrPodmanNotFound
+	// Ensure image is available — load from local file or pull from registry.
+	if m.cfg.LocalImagePath != "" {
+		if err := m.loadImage(m.cfg.LocalImagePath); err != nil {
+			return err
 		}
-		return fmt.Errorf("containers: podman pull %s: %w", m.cfg.Image, err)
+	} else {
+		pullCmd := m.cmdFactory("podman", "pull", m.cfg.Image)
+		pullCmd.Stderr = io.Discard
+		if err := pullCmd.Run(); err != nil {
+			if isNotFound(err) {
+				return ErrPodmanNotFound
+			}
+			return fmt.Errorf("containers: podman pull %s: %w", m.cfg.Image, err)
+		}
 	}
 
 	// Build podman run args
@@ -98,6 +137,28 @@ func (m *ProcManager) initContainer(ctx context.Context) error {
 	runCmd.Stderr = io.Discard
 	if err := runCmd.Run(); err != nil {
 		return fmt.Errorf("containers: podman run: %w", err)
+	}
+	return nil
+}
+
+// loadImage loads a container image from a local .tar or .tar.gz file.
+// It first checks whether the image is already present to avoid redundant loads.
+func (m *ProcManager) loadImage(path string) error {
+	// Check if already loaded — fast path on subsequent runs.
+	existsCmd := m.cmdFactory("podman", "image", "exists", m.cfg.Image)
+	if err := existsCmd.Run(); err == nil {
+		return nil // already present
+	} else if isNotFound(err) {
+		return ErrPodmanNotFound // podman binary itself not found
+	}
+	// Image not present — load from file.
+	loadCmd := m.cmdFactory("podman", "load", "-i", path)
+	loadCmd.Stderr = io.Discard
+	if err := loadCmd.Run(); err != nil {
+		if isNotFound(err) {
+			return ErrPodmanNotFound
+		}
+		return fmt.Errorf("containers: podman load %s: %w", path, err)
 	}
 	return nil
 }
