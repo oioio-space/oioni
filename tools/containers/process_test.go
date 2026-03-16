@@ -88,6 +88,7 @@ func TestProcess_LinesOpenAfterRunningFalse(t *testing.T) {
 	// Trigger wait in goroutine
 	go p.Wait()
 	<-done // wait returned, OS process is "gone"
+	p.Wait() // idempotent; ensures once.Do body has fully completed (p.done is closed)
 
 	if p.Running() {
 		t.Fatal("expected Running()=false")
