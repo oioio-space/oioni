@@ -163,7 +163,7 @@ func (m *ProcManager) initContainer(ctx context.Context) error {
 	runArgs = append(runArgs, m.cfg.Image, "sleep", "infinity")
 
 	runCmd := m.cmdFactory("podman", runArgs...)
-	runCmd.Stderr = io.Discard
+	runCmd.Stderr = os.Stderr // surface podman errors to gokrazy logs
 	if err := runCmd.Run(); err != nil {
 		return fmt.Errorf("containers: podman run: %w", err)
 	}
