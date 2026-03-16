@@ -1,12 +1,13 @@
 go 1.26.0
 
 use (
+	./cmd/oioni
 	./drivers/epd
 	./drivers/touch
 	./drivers/usbgadget
 	./system/imgvol
 	./system/storage
+	./tools
 	./ui/canvas
 	./ui/gui
-	./cmd/oioni
 )
