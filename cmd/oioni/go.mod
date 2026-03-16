@@ -8,6 +8,7 @@ require (
 	github.com/oioio-space/oioni/drivers/usbgadget v0.0.0-00010101000000-000000000000
 	github.com/oioio-space/oioni/system/imgvol v0.0.0-00010101000000-000000000000
 	github.com/oioio-space/oioni/system/storage v0.0.0-00010101000000-000000000000
+	github.com/oioio-space/oioni/tools v0.0.0-00010101000000-000000000000
 	github.com/oioio-space/oioni/ui/gui v0.0.0-00010101000000-000000000000
 	github.com/spf13/afero v1.15.0
 )
@@ -26,6 +27,7 @@ replace (
 	github.com/oioio-space/oioni/drivers/usbgadget => ../../drivers/usbgadget
 	github.com/oioio-space/oioni/system/imgvol => ../../system/imgvol
 	github.com/oioio-space/oioni/system/storage => ../../system/storage
+	github.com/oioio-space/oioni/tools => ../../tools
 	github.com/oioio-space/oioni/ui/canvas => ../../ui/canvas
 	github.com/oioio-space/oioni/ui/gui => ../../ui/gui
 )

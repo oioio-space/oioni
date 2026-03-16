@@ -49,7 +49,21 @@ func main() {
 	// E-ink display + touch
 	withEPaper := flag.Bool("epaper", false, "enable e-ink display and touch controller")
 
+	// Impacket tools (test integration)
+	imp := defineImpacketFlags()
+
 	flag.Parse()
+
+	// ── Impacket tools ────────────────────────────────────────────────────────
+	if imp.secretsdump || imp.ntlmrelay {
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
+		impCtx, impCancel := context.WithCancel(context.Background())
+		go func() { <-sigCh; impCancel() }()
+		runImpacket(impCtx, imp)
+		impCancel()
+		return
+	}
 
 	// ── Image operations (before gadget, so Pi owns the image first) ──────────
 	fstype := imgvol.FSType(*imgFSStr)
