@@ -3,77 +3,140 @@
 [![Go tests](https://github.com/oioio-space/oioni/actions/workflows/test.yml/badge.svg)](https://github.com/oioio-space/oioni/actions/workflows/test.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/oioio-space/oioni.svg)](https://pkg.go.dev/github.com/oioio-space/oioni)
 
-Embedded Go firmware for a **Raspberry Pi Zero 2W** running [gokrazy](https://gokrazy.org/).
+Go firmware for a **Raspberry Pi Zero 2W** running [gokrazy](https://gokrazy.org/) — a minimal Linux OS that runs Go programs directly, with no shell, no package manager, and no init system. The Pi boots in ~5 seconds and all services are live within 170 ms of the kernel starting.
 
-The Pi presents itself over USB as a composite gadget (RNDIS/ECM network, HID keyboard, mass storage) and drives a Waveshare 2.13" Touch e-Paper HAT as a local display. It also runs network security tools from the [impacket](https://github.com/fortra/impacket) suite inside a Podman container.
+The device serves three roles simultaneously:
+
+- **USB composite gadget** — plugs into any host machine and presents itself as a network adapter (RNDIS for Windows, ECM for Linux/macOS), a HID keyboard, and/or a USB mass-storage drive, all on a single USB cable.
+- **Local display** — a Waveshare 2.13" Touch e-Paper HAT shows a UI driven by a touch GUI framework built on a 1-bit drawing canvas.
+- **Network security toolkit** — runs [impacket](https://github.com/fortra/impacket) tools (secretsdump, ntlmrelay, Kerberoasting, …) inside a Podman container, controlled from Go.
 
 ## Hardware
 
 | Component | Part |
 |-----------|------|
-| SBC | Raspberry Pi Zero 2W |
-| Display | [Waveshare 2.13" Touch e-Paper HAT V4](https://www.waveshare.com/wiki/2.13inch_Touch_e-Paper_HAT) — 250×122 px B&W |
-| USB | Gadget mode via DWC2 OTG controller |
+| SBC | Raspberry Pi Zero 2W — quad-core ARM Cortex-A53 @ 1 GHz, 512 MB RAM |
+| OS | [gokrazy](https://gokrazy.org/) — pure-Go, boots from SD card |
+| Display | [Waveshare 2.13" Touch e-Paper HAT V4](https://www.waveshare.com/wiki/2.13inch_Touch_e-Paper_HAT) — 250×122 px B&W, SPI, capacitive touch via I2C |
+| USB | OTG gadget mode via BCM2835 DWC2 controller |
+
+## How it works
+
+### USB gadget
+
+On boot, the program configures Linux's USB gadget subsystem via `configfs` to expose a composite USB device. The host machine sees network adapters and/or HID/storage devices — no driver installation needed on modern OSes.
+
+The DWC2 controller on the Pi Zero 2W only has **7 usable endpoints** beyond EP0, so not all combinations of functions fit simultaneously:
+
+| Config | Endpoints | Status |
+|--------|-----------|--------|
+| RNDIS + ECM + HID | 3 + 3 + 1 = 7 | ✓ |
+| RNDIS + mass-storage | 3 + 2 = 5 | ✓ |
+| RNDIS + ECM + HID + mass-storage | 9 | ✗ controller rejects |
+
+### E-paper display
+
+The Waveshare EPD driver communicates over SPI (4-wire) with the EPD_2in13_V4 display controller. A 1-bit canvas (`ui/canvas`) holds the pixel buffer; the GUI framework (`ui/gui`) handles layout, widgets, and touch events from the GT1151 capacitive touch controller (I2C, addr `0x14`). Partial refresh takes ~0.3 s; full refresh ~2 s.
+
+### Impacket over Podman
+
+Impacket is a Python library — it runs inside a minimal `python:3.13-alpine` container managed by the `tools/containers` package. Rather than pulling from a registry on boot, the image is shipped as a `.tar.gz` alongside the firmware via gokrazy's `ExtraFilePaths` mechanism and loaded with `podman load` on first run.
+
+Signal delivery works around [Podman issue #19486](https://github.com/containers/podman/issues/19486) — `podman exec` does not forward signals — by capturing the container-side PID from `echo $$` and sending signals via `podman exec … kill -TERM/-KILL <pid>`.
+
+### Disk images
+
+The `system/imgvol` package creates and loop-mounts disk image files (FAT32 / exFAT / ext4). These images can be served as USB mass-storage to a connected host, giving the Pi the ability to present a virtual drive that it controls from the inside.
 
 ## Repository layout
 
 ```
 oioni/
-├── cmd/oioni/        # Main gokrazy program (USB gadget + e-paper + impacket CLI)
+├── cmd/oioni/        # Main gokrazy program — wires everything together
+│
 ├── drivers/
 │   ├── epd/          # Waveshare EPD 2.13" V4 — SPI display driver
-│   ├── touch/        # GT1151 capacitive touch — I2C driver
+│   │                 #   Init(mode) / DisplayFull / DisplayPartial / Sleep
+│   ├── touch/        # GT1151 capacitive touch — I2C, 5-point multitouch
+│   │                 #   Start(ctx) → chan TouchEvent
 │   └── usbgadget/    # Linux USB composite gadget via configfs
+│                     #   WithRNDIS / WithECM / WithHID / WithMassStorage
+│
 ├── system/
-│   ├── imgvol/       # Disk image creation + loop-mount (FAT/exFAT/ext4)
-│   └── storage/      # USB hotplug + /perm persistent storage
+│   ├── imgvol/       # Disk image files: Create / Open / Close
+│   │                 #   Supports FAT32, exFAT, ext4 via loop-mount
+│   └── storage/      # USB hotplug (netlink) + /perm persistent storage
+│                     #   Manager auto-mounts USB drives and /perm SD partition
+│
 ├── tools/
-│   ├── containers/   # Podman container lifecycle manager
-│   └── impacket/     # Typed Go wrappers for impacket scripts
+│   ├── containers/   # Podman process manager (load image, run, exec, kill)
+│   └── impacket/     # Typed Go wrappers: SecretsDump / NTLMRelay /
+│                     #   Kerberoast / ASREPRoast / LookupSID / SAMRDump / Exec
+│
 └── ui/
-    ├── canvas/       # 1-bit drawing canvas for e-ink
-    └── gui/          # Touch GUI framework for the e-paper display
+    ├── canvas/       # 1-bit drawing canvas — implements draw.Image
+    └── gui/          # Touch GUI: Navigator, widgets, layout, partial refresh
 ```
 
-Each subdirectory is an independent Go module in a workspace (`go.work`).
+Each directory is an independent Go module. A `go.work` workspace at the root ties them together for local development.
 
 ## Deploy
 
+The gokrazy instance is configured in [`oioio/`](oioio/) (config, wifi credentials, builddir).
+
 ```sh
-# OTA update over Wi-Fi (most common)
+# OTA update over Wi-Fi — most common workflow
 GOWORK=off gok update --parent_dir . -i oioio
 
-# Flash SD card (first time or recovery)
+# Flash SD card — first time or after a crash that made the Pi unreachable
 sudo setfacl -m u:$USER:rw /dev/sdX
 GOWORK=off gok --parent_dir . -i oioio overwrite --full /dev/sdX
 ```
 
-> `GOWORK=off` is required because gok's internal `-mod=mod` conflicts with `go.work`.
+> `GOWORK=off` is required: gok uses `-mod=mod` internally, which conflicts with a `go.work` workspace.
+
+### Shipping the impacket container image
+
+The image is too large to pull at runtime on a Pi Zero 2W. It is built once on a dev machine and shipped as part of the firmware update:
+
+```sh
+# Build the arm64 image
+podman build --platform linux/arm64 -t oioni/impacket:arm64 tools/impacket/
+
+# Export as a compressed tar (~40 MB)
+podman save oioni/impacket:arm64 | gzip > /tmp/impacket-arm64.tar.gz
+```
+
+`oioio/config.json` then maps this file into the firmware via `ExtraFilePaths`:
+```json
+"ExtraFilePaths": {
+  "/usr/share/oioni/impacket-arm64.tar.gz": "/tmp/impacket-arm64.tar.gz"
+}
+```
+
+On first boot the image loads in ~75 s (written to `/perm/var` which persists across reboots). Subsequent boots start the container in ~6 s.
 
 ## Development
 
 ```sh
-# Run all tests (no hardware needed)
+# Run all tests — no hardware required
 go test ./...
 
-# Cross-compile main binary for ARM64
+# Cross-compile the main binary for ARM64
 cd cmd/oioni && GOOS=linux GOARCH=arm64 go build .
-
-# Build the impacket container image (requires podman, builds for arm64)
-podman build --platform linux/arm64 -t oioni/impacket:arm64 tools/impacket/
 ```
 
-Tests that require root or actual hardware carry `//go:build ignore`.
+Tests that require root or physical hardware carry `//go:build ignore` and are excluded from `go test`.
 
-## USB endpoint budget (DWC2, Pi Zero 2W)
+## Performance (measured on device)
 
-The BCM2835 DWC2 controller has **7 usable endpoints** beyond EP0:
-
-| Config | EPs | Works? |
-|--------|-----|--------|
-| RNDIS + ECM + HID | 7 | ✓ |
-| RNDIS + mass-storage | 5 | ✓ |
-| RNDIS + ECM + HID + mass-storage | 9 | ✗ |
+| Metric | Value |
+|--------|-------|
+| Boot → all services live | ~5 s (kernel + 170 ms for user services) |
+| OTA update (Wi-Fi) | ~85 s (139 MB root FS + 69 MB boot FS + reboot) |
+| Impacket — first run (image load) | ~75 s |
+| Impacket — subsequent runs (cached) | ~6 s |
+| RAM used at idle | ~87 MB / 402 MB total |
 
 ## License
 
