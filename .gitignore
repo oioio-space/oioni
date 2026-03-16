@@ -9,8 +9,10 @@ oioio/builddir/
 *.gaf
 
 # Compiled binaries (keep mkfs.* and *.ko — they're pre-built for offline use)
+/oioni
 hello/hello
 cmd/oioni/oioni
+tools/impacket/impacket
 
 # Go workspace local overrides
 go.work.local
