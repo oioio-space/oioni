@@ -55,7 +55,9 @@ func main() {
 	flag.Parse()
 
 	// ── Impacket tools ────────────────────────────────────────────────────────
-	if imp.secretsdump || imp.ntlmrelay {
+	anyImpacket := imp.secretsdump || imp.ntlmrelay || imp.kerberoast ||
+		imp.asreproast || imp.lookupsid || imp.samrdump || imp.exec
+	if anyImpacket {
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
 		impCtx, impCancel := context.WithCancel(context.Background())
@@ -103,7 +105,7 @@ func main() {
 
 	// ── Gadget ────────────────────────────────────────────────────────────────
 	anyGadget := *withRNDIS || *withECM || *withHID || *withMassStorage
-	anyBackground := anyGadget || *withStorage
+	anyBackground := anyGadget || *withStorage || *withEPaper
 
 	if !anyBackground {
 		return // only image operations requested — done
