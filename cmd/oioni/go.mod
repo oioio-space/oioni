@@ -17,6 +17,7 @@ require (
 	golang.org/x/image v0.37.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/text v0.35.0 // indirect
+	rsc.io/qr v0.2.0 // indirect
 )
 
 replace (
