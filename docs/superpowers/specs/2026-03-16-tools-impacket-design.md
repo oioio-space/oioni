@@ -28,6 +28,7 @@ tools/
     manager_test.go
     process_test.go
   impacket/
+    Dockerfile                — arm64 image: python:3.13-alpine + pip install impacket
     impacket.go               — Impacket facade + ProcessStarter interface
     runner.go                 — generic Run(ctx, name, tool, args) → *Process
     ntlmrelayx.go             — NTLMRelay() + NTLMRelayConfig + NTLMRelayEvent
@@ -58,7 +59,14 @@ One long-running container is started once (`podman run -d … sleep infinity`).
 Container startup — lazy, triggered on first `Start()` call:
 1. `podman pull <image>` if not present locally
 2. `podman run -d --network host --cap-add NET_RAW --cap-add NET_ADMIN --name <name> <image> sleep infinity`
-3. Subsequent calls: `podman exec <name> <tool> <args...>`
+3. Each tool invocation: `podman exec <name> sh -c 'echo $$; exec <tool> <args...>'`
+
+Step 3 wraps the tool in a one-liner shell that prints `$$` (the shell's PID, which
+becomes the tool's PID after `exec`) to stdout before handing control over to the tool.
+`ProcManager.Start()` reads the first line of stdout to obtain the in-container PID, stores
+it in the registry entry, and uses it for subsequent `Stop()` / `Kill()` calls. All
+remaining stdout/stderr lines are the tool's actual output. `sh` and `kill` are provided
+by busybox in Alpine-based images.
 
 `--network host` provides direct access to all host interfaces including USB gadget (`usb0`, `usb1`).
 `NET_RAW` + `NET_ADMIN` are required for raw packet capture and interface manipulation.
@@ -104,9 +112,15 @@ type Option func(*ProcManager)
 // WithCmdFactory replaces the internal exec.Cmd factory used for all podman
 // invocations (pull, run, exec, rm). The factory is called once per
 // podman invocation, never reused — exec.Cmd cannot be started more than once.
-// Note: `podman stop` is never issued by ProcManager; signal delivery goes directly
-// to the host-side podman exec OS process PID.
-// This is the injection seam for containers-level tests; it is orthogonal to the
+//
+// `exec` is called in two distinct contexts:
+//   (a) Tool launch: `podman exec <container> sh -c 'echo $$; exec tool args...'`
+//       The fake must write a PID integer on the first stdout line, then optionally
+//       write tool output on subsequent lines, then exit.
+//   (b) Signal delivery: `podman exec <container> kill -TERM|-KILL <pid>`
+//       The fake should exit 0 to simulate successful signal delivery.
+//
+// This is the injection seam for containers-level tests; orthogonal to the
 // ProcessStarter+NewProcess seam used by impacket-level tests.
 func WithCmdFactory(factory func(name string, args ...string) *exec.Cmd) Option
 
@@ -140,29 +154,28 @@ func (m *ProcManager) Start(ctx context.Context, name, executable string, args [
 
 // Stop signals the named process to terminate and waits for it to exit.
 //
-// Signal delivery: SIGTERM sent to the host-side `podman exec` OS process.
-// ProcManager's internal registry entry stores both the `*Process` returned to
-// the caller and the `*exec.Cmd` that launched `podman exec`; Stop uses
-// cmd.Process.Signal(syscall.SIGTERM) from that stored Cmd. Podman propagates
-// the signal into the container process.
+// Signal delivery: Stop runs `podman exec <container> kill -TERM <containerPID>`,
+// where containerPID was captured from the first stdout line when Start() launched
+// the process. This sends SIGTERM to the process inside the container directly,
+// bypassing the host-side `podman exec` wrapper (which does not forward signals).
+// kill(1) is provided by busybox in the Alpine-based image.
 //
 // Deadline: Stop wraps ctx internally as context.WithTimeout(ctx, 10s), applying
 // whichever deadline comes first (minimum of caller deadline and 10 s).
 //
-// If the process has not exited by that deadline, Stop escalates to SIGKILL.
-// After SIGKILL, Stop waits up to an additional 5 s (fixed internal timeout) for
-// the OS to deliver the signal and for the background watcher goroutine to
-// deregister the name. If the watcher has not completed within 5 s, Stop returns
-// an error but the name may still be registered — a pathological case (zombie
-// process) that callers should treat as fatal. On a successful SIGKILL, Stop
-// returns nil.
+// If the process has not exited by that deadline, Stop escalates to SIGKILL via
+// `podman exec <container> kill -KILL <containerPID>`. After SIGKILL, Stop waits
+// up to an additional 5 s for the background watcher goroutine to deregister the
+// name. If the watcher has not completed within 5 s, Stop returns an error — a
+// pathological case (zombie process) that callers should treat as fatal.
 //
 // Stop always returns only after the name has been deregistered from the registry,
 // so subsequent Start() with the same name is always safe after Stop() returns
 // (absent the zombie-process error path).
 func (m *ProcManager) Stop(ctx context.Context, name string) error
 
-// Kill sends SIGKILL to the named process immediately. Does not wait for exit;
+// Kill sends SIGKILL to the in-container process immediately via
+// `podman exec <container> kill -KILL <containerPID>`. Does not wait for exit;
 // deregistration is handled asynchronously by the background watcher goroutine.
 // Callers who need to reuse the same name immediately after stopping must use
 // Stop() instead, which waits for deregistration before returning.
@@ -226,7 +239,10 @@ func (p *Process) Running() bool
 ### Concurrency
 
 - `ProcManager` is safe for concurrent use.
-- Process registry is guarded by a `sync.Mutex`.
+- Process registry is guarded by a `sync.Mutex`. Each registry entry stores:
+  `{proc *Process, cmd *exec.Cmd, containerPID int}`. `proc` is returned to the caller;
+  `cmd` tracks the host-side `podman exec` process lifetime; `containerPID` is used for
+  signal delivery via `podman exec <container> kill`.
 - Container startup uses `sync.Once`; `startErr` is written inside `Once.Do` and read
   only after `once.Do()` returns.
 - `Close()` sets a closed flag under the registry mutex; `Start()` checks this flag
@@ -244,8 +260,25 @@ Impacket-specific facade. Provides:
 
 ### Image
 
-`ghcr.io/fortra/impacket:latest` — official impacket image, ~350 MB compressed on disk
-(actual RSS of the Python process is ~80–120 MB). Supports arm64.
+`ghcr.io/fortra/impacket:latest` is **amd64-only** and cannot run on the Pi Zero 2W.
+A custom arm64 image is required, built from `tools/impacket/Dockerfile`:
+
+```dockerfile
+FROM python:3.13-alpine
+# Use a venv so pip does not conflict with the system Python (PEP 668).
+# The impacket website recommends pipx for user installs; in a container a
+# venv is equivalent and simpler (no pipx overhead).
+RUN python -m venv /opt/impacket \
+ && /opt/impacket/bin/pip install --no-cache-dir impacket
+ENV PATH="/opt/impacket/bin:$PATH"
+```
+
+Build and push once to a registry accessible from the Pi (or load it directly via
+`podman load`). The default image name used by `New()` is `oioni/impacket:arm64`; this
+can be overridden via `ImpacketOption`.
+
+Estimated compressed image size: ~120–150 MB (Alpine + Python + impacket).
+Estimated RSS of a running impacket script: ~80–120 MB.
 
 ### ProcessStarter interface
 
@@ -441,9 +474,11 @@ func (i *Impacket) SecretsDump(ctx context.Context, name string, cfg SecretsDump
 
 Inject a fake podman binary via `WithCmdFactory`. The factory is called once per
 podman invocation and returns a fresh `*exec.Cmd` each time (never reused).
-The fake accepts `pull`, `run`, `exec`, `rm` subcommands, writes predictable stdout,
-exits 0. (`podman stop` is never called by ProcManager — signal delivery goes directly
-to the host-side `podman exec` OS process PID, not via the podman CLI.)
+The fake accepts `pull`, `run`, `exec`, `rm` subcommands and exits 0. For the `exec`
+subcommand the fake must distinguish the two call patterns:
+- Tool launch (`sh -c 'echo $$; exec ...'`): write a fake PID integer (e.g. `42\n`)
+  on the first line, then optionally write tool output lines, then exit.
+- Signal delivery (`kill -TERM|-KILL <pid>`): exit 0 immediately (signal acknowledged).
 No real Podman required.
 
 `containers.NewProcess` is also used directly in `process_test.go` to test `Process`
@@ -476,7 +511,7 @@ The two test seams are orthogonal and do not interact.
 | Concern | Assessment |
 |---------|------------|
 | RAM | Container image is ~350 MB compressed on disk. RSS footprint of the running Python process is ~80–120 MB. Total with Go progs + Podman daemon: ~200–250 MB. Leaves ~260 MB headroom on 512 MB. Acceptable. |
-| Container cold-start | ~10–20 s on ARM64 (image pull + container create). Lazy: paid on first tool invocation, not at New(). |
+| Container cold-start | ~5–15 s on ARM64 (custom ~130 MB image already local + container create). Lazy: paid on first tool invocation, not at New(). |
 | Per-invocation start | `podman exec` on a running container: ~300–500 ms. Acceptable for interactive use. |
 | `ntlmrelayx` latency | Daemon stays running; no per-event overhead. |
 | SecretsDump duration | 5–30 s depending on target. Blocking call with context cancellation. |
@@ -499,7 +534,7 @@ No changes to `containers/` needed.
 
 - GUI integration (handled in `cmd/oioni` / `ui/gui`)
 - Credential storage / persistence (handled in `system/storage`)
-- Container image build (uses upstream impacket image)
+- Pushing the custom impacket image to a registry (manual step, documented in README)
 - Authentication to private registries
 - Network interface binding for ntlmrelayx (`ntlmrelayx.py` does not expose a stable
   flag for NIC selection; excluded until verified against the actual binary)
