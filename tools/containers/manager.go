@@ -133,7 +133,7 @@ func (m *ProcManager) initContainer(ctx context.Context) error {
 		}
 	} else {
 		pullCmd := m.cmdFactory("podman", "pull", m.cfg.Image)
-		pullCmd.Stderr = io.Discard
+		pullCmd.Stderr = os.Stderr
 		if err := pullCmd.Run(); err != nil {
 			if isNotFound(err) {
 				return ErrPodmanNotFound
@@ -172,7 +172,7 @@ func (m *ProcManager) loadImage(path string) error {
 	}
 	// Image not present — load from file.
 	loadCmd := m.cmdFactory("podman", "load", "-i", path)
-	loadCmd.Stderr = io.Discard
+	loadCmd.Stderr = os.Stderr // surface podman errors to gokrazy logs
 	if err := loadCmd.Run(); err != nil {
 		if isNotFound(err) {
 			return ErrPodmanNotFound
