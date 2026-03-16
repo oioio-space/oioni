@@ -134,8 +134,8 @@ func (m *ProcManager) Start(ctx context.Context, name, executable string, args [
 
 	// Launch tool via podman exec.
 	// First line of stdout is the containerPID; subsequent lines are tool output.
-	execArgs := append([]string{"exec", m.cfg.Name, "sh", "-c",
-		fmt.Sprintf("echo $$; exec %s %s", executable, shellJoin(args))})
+	execArgs := []string{"exec", m.cfg.Name, "sh", "-c",
+		fmt.Sprintf("echo $$; exec %s %s", executable, shellJoin(args))}
 	cmd := m.cmdFactory("podman", execArgs...)
 
 	stdout, err := cmd.StdoutPipe()
