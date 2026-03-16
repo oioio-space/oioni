@@ -13,6 +13,19 @@ The device serves three roles simultaneously:
 
 **TL;DR** — plug the Pi into a target machine via USB, it creates a network interface and starts impacket tools automatically. Edit `oioio/wifi.json` + `oioio/config.json`, run `GOWORK=off gok update --parent_dir . -i oioio`, done.
 
+## Use cases
+
+The combination of USB gadget + impacket + e-paper on a device the size of a USB stick opens a number of scenarios for **authorized** penetration testing and red team operations:
+
+- **Network implant via USB** — plugged into any powered USB port (laptop, workstation, docking station), the Pi immediately creates a network interface on the host OS without requiring driver installation. From that interface it can enumerate the local network, relay credentials, or dump hashes from Windows machines reachable on the segment.
+- **Automated credential harvesting** — on boot, the device can run secretsdump, Kerberoasting, or AS-REP Roasting against a pre-configured target and store results on the persistent `/perm` partition (SD card), with no interaction needed. Useful for timed drop attacks during physical assessments.
+- **NTLM relay station** — `ntlmrelayx` listens for incoming authentications (e.g. triggered by a rogue network share or LLMNR/NBT-NS poisoning) and relays them to a target. The Pi's RNDIS/ECM interface makes the host route traffic through it.
+- **HID attack vector** — the HID keyboard function can inject keystrokes on the connected host, combined with the network interface for payload delivery or C2 callback.
+- **Virtual USB drive** — the mass-storage function serves a FAT/exFAT/ext4 image that the Pi controls from the inside: it can pre-populate it with payloads, read files the target drops on it, or swap its content between mounts.
+- **Autonomous field tool** — the e-paper display shows status (IP, running tool, results summary) and the touch interface lets an operator interact with the device without connecting a laptop, while the Pi stays plugged into the target.
+
+> **All uses require explicit authorization from the owner of the target systems.**
+
 ## Hardware
 
 | Component | Part |
