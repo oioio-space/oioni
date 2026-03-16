@@ -4,8 +4,8 @@ package impacket
 import (
 	"context"
 	"errors"
+	"fmt"
 	"regexp"
-	"strconv"
 	"time"
 )
 
@@ -40,6 +40,9 @@ type dumpResult struct {
 // name must be unique among currently running procs.
 // Respects ctx cancellation; always deregisters the process name before returning.
 func (i *Impacket) SecretsDump(ctx context.Context, name string, cfg SecretsDumpConfig) ([]Credential, error) {
+	if cfg.Target == "" {
+		return nil, fmt.Errorf("secretsdump: Target is required")
+	}
 	proc, err := i.mgr.Start(ctx, name, "secretsdump.py", secretsDumpArgs(cfg))
 	if err != nil {
 		return nil, err
@@ -95,9 +98,6 @@ func secretsDumpArgs(cfg SecretsDumpConfig) []string {
 func parseSecretsDumpLine(line string) (Credential, bool) {
 	m := samHashRe.FindStringSubmatch(line)
 	if m == nil {
-		return Credential{}, false
-	}
-	if _, err := strconv.Atoi(m[2]); err != nil {
 		return Credential{}, false
 	}
 	return Credential{

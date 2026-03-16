@@ -12,11 +12,12 @@ import (
 )
 
 // Typical ntlmrelayx log lines that should produce NTLMRelayEvents.
+// Includes a hyphenated domain (CORP-DC) to cover real AD naming.
 var ntlmrelayx_lines = []string{
 	"[*] SMBD-Thread-2: Connection from WORKGROUP/Administrator@192.168.1.100",
 	"[*] WORKGROUP\\Administrator::192.168.1.100:aabbccdd:aad3b435b51404eeaad3b435b51404ee:31d6cfe0d16ae931b73c59d7e0c089c0",
 	"[*] Some other log line",
-	"[*] CORP\\jdoe::192.168.1.101:aabbccdd:aad3b435b51404eeaad3b435b51404ee:8846f7eaee8fb117ad06bdd830b7586c",
+	"[*] CORP-DC\\jdoe::192.168.1.101:aabbccdd:aad3b435b51404eeaad3b435b51404ee:8846f7eaee8fb117ad06bdd830b7586c",
 }
 
 func TestNTLMRelay_EventsParsed(t *testing.T) {
@@ -42,7 +43,7 @@ func TestNTLMRelay_EventsParsed(t *testing.T) {
 	if events[0].Username != "Administrator" || events[0].Domain != "WORKGROUP" {
 		t.Errorf("event[0] = %+v", events[0])
 	}
-	if events[1].Username != "jdoe" || events[1].Domain != "CORP" {
+	if events[1].Username != "jdoe" || events[1].Domain != "CORP-DC" {
 		t.Errorf("event[1] = %+v", events[1])
 	}
 	if err := relay.Err(); err != nil {
@@ -108,4 +109,9 @@ func (f *fakeStarterWithProc) Stop(_ context.Context, _ string) error {
 	}
 	return nil
 }
-func (f *fakeStarterWithProc) Kill(_ string) error { return nil }
+func (f *fakeStarterWithProc) Kill(_ string) error {
+	if f.stopFn != nil {
+		f.stopFn()
+	}
+	return nil
+}

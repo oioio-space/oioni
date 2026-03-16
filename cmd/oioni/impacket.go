@@ -69,6 +69,11 @@ func runImpacket(ctx context.Context, f *impacketFlags) {
 			log.Printf("impacket: ntlmrelay start error: %v", err)
 			return
 		}
+		// When ctx is cancelled (SIGTERM), kill the in-container process so Events() closes.
+		go func() {
+			<-ctx.Done()
+			_ = relay.Kill()
+		}()
 		for e := range relay.Events() {
 			log.Printf("impacket: captured %s\\%s hash=%s", e.Domain, e.Username, e.Hash)
 		}

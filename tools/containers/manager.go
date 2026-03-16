@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Config describes a managed container.
@@ -134,8 +135,9 @@ func (m *ProcManager) Start(ctx context.Context, name, executable string, args [
 
 	// Launch tool via podman exec.
 	// First line of stdout is the containerPID; subsequent lines are tool output.
+	// executable is single-quoted to prevent shell injection.
 	execArgs := []string{"exec", m.cfg.Name, "sh", "-c",
-		fmt.Sprintf("echo $$; exec %s %s", executable, shellJoin(args))}
+		fmt.Sprintf("echo $$; exec %s %s", shellQuote(executable), shellJoin(args))}
 	cmd := m.cmdFactory("podman", execArgs...)
 
 	stdout, err := cmd.StdoutPipe()
@@ -205,12 +207,22 @@ func (m *ProcManager) Start(ctx context.Context, name, executable string, args [
 		gone:         make(chan struct{}),
 	}
 
+	// Register entry and add watcher to wg under the same lock so that a
+	// concurrent Close() either sees the entry (and kills it) or sees
+	// m.closed=true (and we bail here). wg.Add inside the lock guarantees
+	// Close()'s wg.Wait() cannot return before our watcher goroutine starts.
 	m.mu.Lock()
+	if m.closed {
+		m.mu.Unlock()
+		_ = kill()
+		_ = cmd.Wait()
+		return nil, ErrManagerClosed
+	}
+	m.wg.Add(1)
 	m.procs[capturedName] = entry
 	m.mu.Unlock()
 
 	// Background watcher: deregister once process exits.
-	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()
 		proc.Wait() //nolint:errcheck
@@ -223,7 +235,8 @@ func (m *ProcManager) Start(ctx context.Context, name, executable string, args [
 	return proc, nil
 }
 
-// Stop sends SIGTERM to the named process, then waits for it to exit.
+// Stop sends SIGTERM, waits up to 10 s, then escalates to SIGKILL.
+// The effective deadline is min(ctx, 10 s) for SIGTERM, then 5 s more for SIGKILL.
 func (m *ProcManager) Stop(ctx context.Context, name string) error {
 	m.mu.Lock()
 	entry, ok := m.procs[name]
@@ -238,10 +251,19 @@ func (m *ProcManager) Stop(ctx context.Context, name string) error {
 		termCmd.Stderr = io.Discard
 		_ = termCmd.Run()
 	}
+	stopCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 	select {
 	case <-entry.gone:
 		return nil
-	case <-ctx.Done():
+	case <-stopCtx.Done():
+		// Escalate to SIGKILL.
+		_ = entry.proc.Kill()
+		select {
+		case <-entry.gone:
+		case <-time.After(5 * time.Second):
+			return errors.New("containers: process did not exit after SIGKILL")
+		}
 		return ctx.Err()
 	}
 }
@@ -297,11 +319,16 @@ func (m *ProcManager) Close() error {
 	return nil
 }
 
-// shellJoin builds a minimal shell-safe argument string.
+// shellQuote single-quotes one argument, escaping embedded single quotes.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// shellJoin builds a shell-safe argument string from a slice.
 func shellJoin(args []string) string {
 	quoted := make([]string, len(args))
 	for i, a := range args {
-		quoted[i] = "'" + strings.ReplaceAll(a, "'", `'\''`) + "'"
+		quoted[i] = shellQuote(a)
 	}
 	return strings.Join(quoted, " ")
 }

@@ -66,7 +66,9 @@ func (p *NTLMRelayProcess) Kill() error {
 //	[*] DOMAIN\user::TARGET:challenge:nthash
 //
 // emitted by ntlmrelayx when it captures a hash.
-var ntlmHashRe = regexp.MustCompile(`^\[.*?\]\s+(\w+)\\(\w+)::[^:]+:[0-9a-fA-F]+:[0-9a-fA-F:]+$`)
+// Domain group uses [^\\\s]+ to allow hyphens (e.g. CORP-DC) and dots (FQDN).
+// Username group uses [^\s:\\]+ to allow hyphens and dollar signs (machine accounts).
+var ntlmHashRe = regexp.MustCompile(`^\[.*?\]\s+([^\\\s]+)\\([^\s:\\]+)::[^:]+:[0-9a-fA-F]+:[0-9a-fA-F:]+$`)
 
 // NTLMRelay starts ntlmrelayx as a background daemon. name must be unique.
 func (i *Impacket) NTLMRelay(ctx context.Context, name string, cfg NTLMRelayConfig) (*NTLMRelayProcess, error) {
