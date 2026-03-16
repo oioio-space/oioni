@@ -80,6 +80,60 @@ oioni/
 
 Each directory is an independent Go module. A `go.work` workspace at the root ties them together for local development.
 
+## Configuration
+
+Before deploying, set your own credentials and network settings in the two files below. Both files are tracked in git with placeholder values; local changes are hidden from git via `skip-worktree` so real passwords never get committed accidentally.
+
+### `oioio/wifi.json` — Wi-Fi credentials
+
+```json
+{
+    "ssid": "YOUR_WIFI_SSID",
+    "psk":  "YOUR_WIFI_PASSWORD"
+}
+```
+
+Edit it directly:
+```sh
+$EDITOR oioio/wifi.json
+```
+
+### `oioio/config.json` — gokrazy instance settings
+
+The relevant fields:
+
+```json
+{
+  "Hostname": "oioio",
+  "Update": {
+    "Hostname": "192.168.0.33",
+    "HTTPPassword": "CHANGE_ME"
+  }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `Hostname` | Device hostname (used for mDNS: `http://oioio/`) |
+| `Update.Hostname` | Pi's IP address — update to match your DHCP lease |
+| `Update.HTTPPassword` | Password for the gokrazy web UI and OTA API |
+
+To commit a change to `config.json` without leaking real passwords:
+
+```sh
+# 1. Temporarily disable skip-worktree
+git update-index --no-skip-worktree oioio/config.json
+
+# 2. Replace real password with placeholder before staging
+#    edit the file: set HTTPPassword to "CHANGE_ME"
+
+# 3. Commit
+git add oioio/config.json && git commit -m "..."
+
+# 4. Restore real password locally, re-enable skip-worktree
+git update-index --skip-worktree oioio/config.json
+```
+
 ## Deploy
 
 The gokrazy instance is configured in [`oioio/`](oioio/) (config, wifi credentials, builddir).
