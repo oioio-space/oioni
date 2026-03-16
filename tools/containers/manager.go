@@ -142,6 +142,16 @@ func (m *ProcManager) initContainer(ctx context.Context) error {
 		}
 	}
 
+	// Clean up any leftover container from a previous run (name collision prevention).
+	stopCmd := m.cmdFactory("podman", "stop", m.cfg.Name)
+	stopCmd.Stdout = io.Discard
+	stopCmd.Stderr = io.Discard
+	_ = stopCmd.Run()
+	rmCmd := m.cmdFactory("podman", "rm", m.cfg.Name)
+	rmCmd.Stdout = io.Discard
+	rmCmd.Stderr = io.Discard
+	_ = rmCmd.Run()
+
 	// Build podman run args
 	runArgs := []string{"run", "-d", "--name", m.cfg.Name}
 	if m.cfg.Network != "" {
