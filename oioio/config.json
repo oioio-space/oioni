@@ -1,0 +1,50 @@
+{
+	"Hostname": "oioio",
+	"Update": {
+		"Hostname": "192.168.0.33",
+		"HTTPPassword": "CHANGE_ME"
+	},
+	"Environment": [
+		"GOOS=linux",
+		"GOARCH=arm64"
+	],
+	"Packages": [
+		"github.com/gokrazy/fbstatus",
+		"github.com/gokrazy/serial-busybox",
+		"github.com/gokrazy/breakglass",
+		"github.com/gokrazy/wifi",
+		"github.com/gokrazy/mkfs",
+		"awesomeProject/hello"
+	],
+	"PackageConfig": {
+		"github.com/gokrazy/gokrazy/cmd/randomd": {
+			"ExtraFileContents": {
+				"/etc/machine-id": "819d2606b0db419c9a5bdddb9ca8daf1\n"
+			}
+		},
+		"github.com/gokrazy/wifi": {
+			"ExtraFilePaths": {
+				"/etc/wifi.json": "wifi.json"
+			}
+		},
+		"github.com/gokrazy/breakglass": {
+			"CommandLineFlags": [
+				"-authorized_keys=/etc/breakglass.authorized_keys"
+			],
+			"ExtraFileContents": {
+				"/etc/breakglass.authorized_keys": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMTRUHZxjWLlN4Vrg9CEdZCrwMvvaJ8dOpSzna/Nr/K6 oioio-pizero\n"
+			}
+		},
+		"awesomeProject/hello": {
+			"CommandLineFlags": [
+				"-epaper"
+			]
+		}
+	},
+	"BootloaderExtraLines": [
+		"dtoverlay=dwc2,dr_mode=peripheral",
+		"dtparam=spi=on",
+		"dtparam=i2c_arm=on"
+	],
+	"SerialConsole": "disabled"
+}

@@ -4,8 +4,8 @@
 
 # Gokrazy build artifacts
 oioio/builddir/
-oioio/wifi.json
-oioio/config.json
+# config.json et wifi.json sont trackés avec des placeholders.
+# Modifications locales (vrais mots de passe) masquées via skip-worktree — voir Makefile.
 *.gaf
 
 # Compiled binaries (keep mkfs.* and *.ko — they're pre-built for offline use)
