@@ -11,6 +11,8 @@ The device serves three roles simultaneously:
 - **Local display** — a Waveshare 2.13" Touch e-Paper HAT shows a UI driven by a touch GUI framework built on a 1-bit drawing canvas.
 - **Network security toolkit** — runs [impacket](https://github.com/fortra/impacket) tools (secretsdump, ntlmrelay, Kerberoasting, …) inside a Podman container, controlled from Go.
 
+**TL;DR** — plug the Pi into a target machine via USB, it creates a network interface and starts impacket tools automatically. Edit `oioio/wifi.json` + `oioio/config.json`, run `GOWORK=off gok update --parent_dir . -i oioio`, done.
+
 ## Hardware
 
 | Component | Part |
