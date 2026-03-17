@@ -3,11 +3,13 @@ package epd
 
 import (
 	"fmt"
-	"golang.org/x/sys/unix"
-	"os"
-	"strconv"
-	"time"
+	"sync"
 	"unsafe"
+
+	"golang.org/x/sys/unix"
+	"periph.io/x/conn/v3/gpio"
+	"periph.io/x/conn/v3/gpio/gpioreg"
+	host "periph.io/x/host/v3"
 )
 
 // SPIConn is a write-only SPI connection.
@@ -92,70 +94,64 @@ func (s *linuxSPI) Tx(w []byte) error {
 
 func (s *linuxSPI) Close() error { return unix.Close(s.fd) }
 
-// gpioSysfsDelay is the settle time after exporting a GPIO pin via sysfs.
-// The kernel creates /sys/class/gpio/gpioN/ asynchronously after the export write.
-const gpioSysfsDelay = 50 * time.Millisecond
+// ── periph.io GPIO ────────────────────────────────────────────────────────────
 
-type linuxGPIOOutput struct {
-	pin  int
-	file *os.File
+// hostOnce ensures periph.io host.Init() is called exactly once.
+var (
+	hostOnce    sync.Once
+	hostInitErr error
+)
+
+func ensureHostInit() error {
+	hostOnce.Do(func() {
+		if _, err := host.Init(); err != nil {
+			hostInitErr = fmt.Errorf("periph host.Init: %w", err)
+		}
+	})
+	return hostInitErr
 }
 
-func openGPIOOutput(pin int) (*linuxGPIOOutput, error) {
-	// Best-effort export — EBUSY means pin is already exported, which is fine.
-	// Any real problem (e.g. sysfs not available) surfaces on the direction write below.
-	_ = os.WriteFile("/sys/class/gpio/export", []byte(strconv.Itoa(pin)), 0)
-	time.Sleep(gpioSysfsDelay)
-	dir := fmt.Sprintf("/sys/class/gpio/gpio%d/direction", pin)
-	if err := os.WriteFile(dir, []byte("out"), 0); err != nil {
-		return nil, fmt.Errorf("gpio%d set direction out: %w", pin, err)
+// periphOutput wraps a periph.io pin as an OutputPin.
+type periphOutput struct{ pin gpio.PinIO }
+
+func (p *periphOutput) Out(high bool) error { return p.pin.Out(gpio.Level(high)) }
+func (p *periphOutput) Close() error        { return nil } // periph.io pins are global, not closed individually
+
+// periphInput wraps a periph.io pin as an InputPin.
+type periphInput struct{ pin gpio.PinIO }
+
+func (p *periphInput) Read() bool  { return bool(p.pin.Read()) }
+func (p *periphInput) Close() error { return nil }
+
+// openGPIOOutput opens a BCM-numbered pin as an output via periph.io.
+// periph.io resolves the correct GPIO chip base automatically, avoiding
+// the sysfs base-offset issues present on Linux 6.x.
+func openGPIOOutput(pin int) (*periphOutput, error) {
+	if err := ensureHostInit(); err != nil {
+		return nil, err
 	}
-	val := fmt.Sprintf("/sys/class/gpio/gpio%d/value", pin)
-	f, err := os.OpenFile(val, os.O_WRONLY, 0)
-	if err != nil {
-		return nil, fmt.Errorf("gpio%d open value: %w", pin, err)
+	p := gpioreg.ByName(fmt.Sprintf("GPIO%d", pin))
+	if p == nil {
+		return nil, fmt.Errorf("gpio%d: pin not found (periph.io)", pin)
 	}
-	return &linuxGPIOOutput{pin: pin, file: f}, nil
-}
-
-func (g *linuxGPIOOutput) Out(high bool) error {
-	v := []byte("0")
-	if high {
-		v = []byte("1")
+	if err := p.Out(gpio.Low); err != nil {
+		return nil, fmt.Errorf("gpio%d set output: %w", pin, err)
 	}
-	_, err := g.file.WriteAt(v, 0)
-	return err
+	return &periphOutput{pin: p}, nil
 }
 
-func (g *linuxGPIOOutput) Close() error { return g.file.Close() }
-
-type linuxGPIOInput struct {
-	pin  int
-	file *os.File
-}
-
-func openGPIOInput(pin int) (*linuxGPIOInput, error) {
-	_ = os.WriteFile("/sys/class/gpio/export", []byte(strconv.Itoa(pin)), 0) // best-effort
-	time.Sleep(gpioSysfsDelay)
-	dir := fmt.Sprintf("/sys/class/gpio/gpio%d/direction", pin)
-	if err := os.WriteFile(dir, []byte("in"), 0); err != nil {
-		return nil, fmt.Errorf("gpio%d set direction in: %w", pin, err)
+// openGPIOInput opens a BCM-numbered pin as an input via periph.io.
+// Edge detection is not available on gokrazy — callers must poll Read().
+func openGPIOInput(pin int) (*periphInput, error) {
+	if err := ensureHostInit(); err != nil {
+		return nil, err
 	}
-	val := fmt.Sprintf("/sys/class/gpio/gpio%d/value", pin)
-	f, err := os.OpenFile(val, os.O_RDONLY, 0)
-	if err != nil {
-		return nil, fmt.Errorf("gpio%d open value: %w", pin, err)
+	p := gpioreg.ByName(fmt.Sprintf("GPIO%d", pin))
+	if p == nil {
+		return nil, fmt.Errorf("gpio%d: pin not found (periph.io)", pin)
 	}
-	return &linuxGPIOInput{pin: pin, file: f}, nil
+	if err := p.In(gpio.PullNoChange, gpio.NoEdge); err != nil {
+		return nil, fmt.Errorf("gpio%d set input: %w", pin, err)
+	}
+	return &periphInput{pin: p}, nil
 }
-
-// Read returns the current pin level. Errors from ReadAt are intentionally
-// ignored: the InputPin interface is polling-only, and a sysfs read failure
-// returns false (not-busy), which is the fail-safe behaviour for a BUSY pin.
-func (g *linuxGPIOInput) Read() bool {
-	buf := make([]byte, 1)
-	g.file.ReadAt(buf, 0) //nolint:errcheck
-	return buf[0] == '1'
-}
-
-func (g *linuxGPIOInput) Close() error { return g.file.Close() }
