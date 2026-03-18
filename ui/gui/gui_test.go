@@ -479,28 +479,6 @@ func TestRefreshManagerSkipsPartialWhenBufferUnchanged(t *testing.T) {
 	}
 }
 
-func TestRefreshManagerAntiGhostCounter(t *testing.T) {
-	d := &fakeDisplay{}
-	rm := newRefreshManager(d)
-	rm.antiGhostN = 3 // low threshold for test
-	c := canvas.New(epd.Width, epd.Height, canvas.Rot90)
-	w := NewLabel("a")
-	w.SetBounds(image.Rect(0, 0, 100, 20))
-	// First forced to establish base
-	rm.RenderWith(c, []Widget{w}, true)
-	initBefore := d.initCalled
-	// Run N+1 partial updates with changing content — buffer differs each time,
-	// so the diff does not suppress the SPI call and the anti-ghost counter advances.
-	texts := []string{"b", "c", "d", "e"}
-	for _, text := range texts {
-		w.SetText(text)
-		w.SetDirty()
-		rm.Render(c, []Widget{w})
-	}
-	if d.initCalled <= initBefore {
-		t.Errorf("expected anti-ghost full refresh after %d partial updates", rm.antiGhostN)
-	}
-}
 
 // ── navigator tests ───────────────────────────────────────────────────────────
 
@@ -760,6 +738,38 @@ func TestNavigator_HScrollable_SwipeLeft(t *testing.T) {
 
 	if hs.scrolled >= 0 {
 		t.Errorf("expected negative cumulative scroll (ScrollH(-1) called), got %d", hs.scrolled)
+	}
+}
+
+// TestSwipe_NoDoubleScroll verifies that a slow swipe (multiple events, each consecutive
+// pair exceeding the 30px threshold) triggers ScrollH exactly once, not multiple times.
+// Regression test for the "swipeConsumed" fix.
+func TestSwipe_NoDoubleScroll(t *testing.T) {
+	fd := &fakeDisplay{}
+	nav := NewNavigator(fd)
+	hs := &mockHScrollable{}
+	hs.SetBounds(image.Rect(0, 0, 200, 100))
+	nav.Push(&Scene{Widgets: []Widget{hs}}) //nolint:errcheck
+
+	tc := make(chan touch.TouchEvent, 10)
+	ctx, cancel := context.WithTimeout(context.Background(), 400*time.Millisecond)
+	defer cancel()
+
+	go func() {
+		// Four consecutive events: pairs [1→2] and [3→4] each exceed the 30px threshold.
+		// Without swipeConsumed guard, this would fire ScrollH(-1) twice.
+		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 50, Y: 100}}}
+		time.Sleep(20 * time.Millisecond)
+		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 50, Y: 140}}} // ΔY=+40 → swipe
+		time.Sleep(20 * time.Millisecond)
+		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 50, Y: 170}}} // still moving
+		time.Sleep(20 * time.Millisecond)
+		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 50, Y: 210}}} // ΔY=+40 from prev
+	}()
+	nav.Run(ctx, tc)
+
+	if hs.scrolled != -1 {
+		t.Errorf("expected exactly one left scroll (scrolled=-1), got %d", hs.scrolled)
 	}
 }
 

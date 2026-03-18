@@ -9,40 +9,31 @@ import (
 	"github.com/oioio-space/oioni/drivers/epd"
 )
 
-// defaultAntiGhostN is set to 5 per Waveshare 2.13" V4 hardware recommendation:
-// after 5 partial updates the pixel charges become unbalanced and ghosting is visible.
-// Full refresh resets the reference frame and restores contrast.
-const defaultAntiGhostN = 5 // full refresh every N partial updates
-
 // maxFastBeforeBase is the maximum consecutive DisplayFast() calls before forcing a
 // DisplayBase() to re-sync the 0x26 reference frame. DisplayFast only writes 0x24;
 // without periodic base sync, subsequent partial updates see a stale reference.
 const maxFastBeforeBase = 3
 
 // refreshManager tracks dirty state and decides refresh strategy.
+// Full refreshes occur only on explicit scene transitions (Push/Pop) and when
+// content changes exceed 60% of bytes (content-based anti-ghosting).
 type refreshManager struct {
-	display    Display
-	antiGhostN int    // full refresh every N partial updates
-	counter    int    // partial updates since last full refresh
-	fastCount  int    // consecutive fast refreshes since last full refresh
-	hasBase    bool
-	prevBuf    []byte // last buffer sent to the display (nil until first render)
+	display   Display
+	fastCount int    // consecutive fast refreshes since last base sync
+	hasBase   bool
+	prevBuf   []byte // last buffer sent to the display (nil until first render)
 }
 
 func newRefreshManager(d Display) *refreshManager {
-	return &refreshManager{display: d, antiGhostN: defaultAntiGhostN}
+	return &refreshManager{display: d}
 }
 
 // Render draws dirty widgets and refreshes with the appropriate strategy.
-// Noop if no widget is dirty.
+// Noop if no widget is dirty. Always uses partial refresh; full refresh is
+// triggered only by content-based threshold or explicit RenderWith(forced=true).
 func (rm *refreshManager) Render(c *canvas.Canvas, widgets []Widget) error {
 	if !slices.ContainsFunc(widgets, func(w Widget) bool { return w.IsDirty() }) {
 		return nil
-	}
-	// Anti-ghosting: full refresh every antiGhostN partial updates.
-	// counter tracks partials since last full; trigger when it would reach antiGhostN.
-	if rm.counter >= rm.antiGhostN && rm.hasBase {
-		return rm.fullRefresh(c, widgets)
 	}
 	return rm.partialRefresh(c, widgets)
 }
@@ -67,7 +58,6 @@ func (rm *refreshManager) fullRefresh(c *canvas.Canvas, widgets []Widget) error 
 	}
 	rm.prevBuf = buf
 	markAllClean(widgets)
-	rm.counter = 0
 	rm.fastCount = 0
 	rm.hasBase = true
 	return nil
@@ -124,7 +114,6 @@ func (rm *refreshManager) partialRefresh(c *canvas.Canvas, widgets []Widget) err
 	}
 	rm.prevBuf = buf
 	markAllClean(widgets)
-	rm.counter++
 	return nil
 }
 
