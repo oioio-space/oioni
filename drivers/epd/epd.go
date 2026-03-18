@@ -28,11 +28,12 @@ const (
 
 // Display drives the EPD_2in13_V4 e-ink panel.
 type Display struct {
-	spi         SPIConn
-	rst, dc, cs OutputPin
-	busy        InputPin
-	closers     []func() error
-	firstErr    error // first I/O error from sendCommand/sendData; reset at start of each public method
+	spi           SPIConn
+	rst, dc, cs   OutputPin
+	busy          InputPin
+	closers       []func() error
+	firstErr      error // first I/O error from sendCommand/sendData; reset at start of each public method
+	partialInited bool  // true while partial mode is active; avoids redundant reset between consecutive partials
 }
 
 // Config holds the Linux device paths and BCM pin numbers.
@@ -176,6 +177,7 @@ func (d *Display) setCursor(x, y int) {
 
 func (d *Display) Init(m Mode) error {
 	d.firstErr = nil
+	d.partialInited = false // any mode switch invalidates the warm-partial state
 	switch m {
 	case ModeFull:
 		d.reset()
@@ -333,23 +335,26 @@ func (d *Display) DisplayBase(buf []byte) error {
 //	display.DisplayBase(buf)
 func (d *Display) DisplayPartial(buf []byte) error {
 	d.firstErr = nil
-	// Mini-reset required before every partial update (Waveshare reference).
-	if err := d.rst.Out(false); err != nil && d.firstErr == nil {
-		d.firstErr = err
+	if !d.partialInited {
+		// First partial after a full refresh: mini-reset + partial-mode register init.
+		// Subsequent calls skip this (~40ms saved per update, pattern from repaper/gratis).
+		if err := d.rst.Out(false); err != nil && d.firstErr == nil {
+			d.firstErr = err
+		}
+		time.Sleep(1 * time.Millisecond)
+		if err := d.rst.Out(true); err != nil && d.firstErr == nil {
+			d.firstErr = err
+		}
+		d.sendCommand(0x3C) // border waveform
+		d.sendData(0x80)
+		d.sendCommand(0x01) // driver output control
+		d.sendData(byte(Height-1), byte((Height-1)>>8), 0x00)
+		d.sendCommand(0x11) // data entry mode
+		d.sendData(0x03)
+		d.setWindow(0, 0, Width-1, Height-1)
+		d.setCursor(0, 0)
+		d.partialInited = true
 	}
-	time.Sleep(1 * time.Millisecond)
-	if err := d.rst.Out(true); err != nil && d.firstErr == nil {
-		d.firstErr = err
-	}
-	// Partial-mode init (border, driver output, data entry, window, cursor).
-	d.sendCommand(0x3C)
-	d.sendData(0x80)
-	d.sendCommand(0x01)
-	d.sendData(byte(Height-1), byte((Height-1)>>8), 0x00)
-	d.sendCommand(0x11)
-	d.sendData(0x03)
-	d.setWindow(0, 0, Width-1, Height-1)
-	d.setCursor(0, 0)
 	d.sendCommand(0x24) // write full framebuffer
 	d.sendData(buf...)
 	d.sendCommand(0x22)

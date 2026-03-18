@@ -14,10 +14,19 @@ func (f *fakeSPI) Tx(w []byte) error {
 	return nil
 }
 
-// fakeOutputPin records the last value written.
-type fakeOutputPin struct{ last bool }
+// fakeOutputPin records the last value written and counts transitions.
+type fakeOutputPin struct {
+	last        bool
+	transitions int
+}
 
-func (f *fakeOutputPin) Out(high bool) error { f.last = high; return nil }
+func (f *fakeOutputPin) Out(high bool) error {
+	if high != f.last {
+		f.transitions++
+	}
+	f.last = high
+	return nil
+}
 
 // fakeInputPin returns a configurable value.
 type fakeInputPin struct{ val bool }
@@ -184,6 +193,49 @@ func TestDisplayPartialSendsFullBuffer(t *testing.T) {
 	}
 	if !foundFF {
 		t.Error("expected partial update sequence 0xFF in SPI log")
+	}
+}
+
+func TestDisplayPartialSkipsResetOnConsecutiveCalls(t *testing.T) {
+	spi := &fakeSPI{}
+	busy := &fakeInputPin{val: false}
+	rst := &fakeOutputPin{}
+	d := newDisplay(spi, rst, &fakeOutputPin{}, &fakeOutputPin{}, busy)
+
+	buf := make([]byte, BufferSize)
+
+	// First partial: must do mini-reset (RST transitions: high→low→high = 2 transitions).
+	rst.transitions = 0
+	d.DisplayPartial(buf) //nolint:errcheck
+	firstTransitions := rst.transitions
+	if firstTransitions == 0 {
+		t.Error("first DisplayPartial must issue RST transitions for partial-mode init")
+	}
+
+	// Second consecutive partial: no RST transitions.
+	rst.transitions = 0
+	d.DisplayPartial(buf) //nolint:errcheck
+	if rst.transitions != 0 {
+		t.Errorf("second consecutive DisplayPartial must skip RST reset, got %d transitions", rst.transitions)
+	}
+}
+
+func TestDisplayPartialReinitsAfterInit(t *testing.T) {
+	spi := &fakeSPI{}
+	busy := &fakeInputPin{val: false}
+	rst := &fakeOutputPin{}
+	d := newDisplay(spi, rst, &fakeOutputPin{}, &fakeOutputPin{}, busy)
+
+	buf := make([]byte, BufferSize)
+
+	d.DisplayPartial(buf) //nolint:errcheck // warms up partial state
+	d.Init(ModeFull)      // mode switch must reset partialInited
+
+	// After Init, first DisplayPartial must do RST again.
+	rst.transitions = 0
+	d.DisplayPartial(buf) //nolint:errcheck
+	if rst.transitions == 0 {
+		t.Error("DisplayPartial after Init must re-issue RST (partialInited was reset)")
 	}
 }
 
