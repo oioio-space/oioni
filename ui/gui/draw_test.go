@@ -45,6 +45,21 @@ func TestDrawRoundedRect_Filled_Center(t *testing.T) {
 	}
 }
 
+func TestDrawRoundedRect_Filled_WithRadius(t *testing.T) {
+	c := canvas.New(epd.Width, epd.Height, canvas.Rot90)
+	r := image.Rect(10, 10, 40, 30)
+	DrawRoundedRect(c, r, 4, true, canvas.Black)
+	// Center of rect should be black (filled)
+	if c.At(25, 20) != (color.Gray{Y: 0}) {
+		t.Error("center pixel should be black (filled with radius=4)")
+	}
+	// Corner at (10,10) should be white — cut by radius=4
+	// Top-left corner center is at (14,14); (10,10) is outside the circle
+	if c.At(10, 10) == (color.Gray{Y: 0}) {
+		t.Error("corner pixel (10,10) should be white (cut by radius=4)")
+	}
+}
+
 func TestDrawRoundedRect_Empty_NoPanic(t *testing.T) {
 	c := canvas.New(epd.Width, epd.Height, canvas.Rot90)
 	// Empty rect must not panic

@@ -10,7 +10,7 @@ import (
 )
 
 // DrawRoundedRect draws a rounded rectangle outline (fill=false) or filled shape (fill=true).
-// radius is the corner radius in pixels. col must be canvas.Black or canvas.White.
+// radius is the corner radius in pixels. col is thresholded to 1-bit by the canvas (any non-black color renders as white).
 // Uses Bresenham midpoint circle for corners, straight segments between corners.
 func DrawRoundedRect(c *canvas.Canvas, r image.Rectangle, radius int, fill bool, col color.Color) {
 	if r.Empty() {
