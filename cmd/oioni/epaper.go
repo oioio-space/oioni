@@ -1,15 +1,15 @@
-// hello/epaper.go — e-ink display + touch integration for gokrazy/Pi Zero 2W
+// cmd/oioni/epaper.go — e-ink display + touch integration for gokrazy/Pi Zero 2W
 package main
 
 import (
 	"context"
-	"image"
 	"log"
-	"sync"
+	"time"
 
 	"github.com/oioio-space/oioni/drivers/epd"
-	"github.com/oioio-space/oioni/ui/gui"
 	"github.com/oioio-space/oioni/drivers/touch"
+	"github.com/oioio-space/oioni/ui/gui"
+	oioniui "github.com/oioio-space/oioni/cmd/oioni/ui"
 )
 
 const (
@@ -23,15 +23,14 @@ const (
 	touchAddr    = 0x14
 	touchPinTRST = 22
 	touchPinINT  = 27
+
+	idleTimeout = 60 * time.Second
 )
 
 type epaperState struct {
-	nav       *gui.Navigator
-	status    *gui.StatusBar
-	td        *touch.Detector
-	mu        sync.Mutex
-	cancelFn  context.CancelFunc
-	renderReq chan struct{}
+	nav    *gui.Navigator
+	status *gui.StatusBar
+	cancel context.CancelFunc
 }
 
 func startEPaper(ctx context.Context) *epaperState {
@@ -69,21 +68,11 @@ func startEPaper(ctx context.Context) *epaperState {
 		return nil
 	}
 
-	nav := gui.NewNavigator(d)
-
-	header := gui.NewLabel("oioio")
-	header.SetBounds(image.Rect(0, 0, 250, 16))
-
-	divider := gui.NewDivider()
-	divider.SetBounds(image.Rect(0, 16, 250, 17))
-
+	nav := gui.NewNavigatorWithIdle(d, idleTimeout)
 	status := gui.NewStatusBar("", "")
-	status.SetBounds(image.Rect(0, 17, 250, 122))
 
-	scene := &gui.Scene{
-		Widgets: []gui.Widget{header, divider, status},
-	}
-	if err := nav.Push(scene); err != nil {
+	home := oioniui.NewHomeScene(nav, status)
+	if err := nav.Push(home); err != nil {
 		log.Printf("epaper: initial render failed: %v", err)
 		cancel()
 		_ = d.Sleep()
@@ -91,7 +80,7 @@ func startEPaper(ctx context.Context) *epaperState {
 		return nil
 	}
 
-	renderReq := make(chan struct{}, 1)
+	oioniui.StartKeepAlive(guiCtx, nav)
 
 	go func() {
 		defer func() {
@@ -99,44 +88,20 @@ func startEPaper(ctx context.Context) *epaperState {
 			_ = d.Sleep()
 			_ = d.Close()
 		}()
-		for {
-			select {
-			case <-guiCtx.Done():
-				return
-			case _, ok := <-tc:
-				if !ok {
-					return
-				}
-				// Touch events are handled by nav.Run internally,
-				// but since we need a custom loop, just call Render on touch too.
-				if err := nav.Render(); err != nil {
-					log.Printf("epaper: touch render: %v", err)
-				}
-			case <-renderReq:
-				if err := nav.Render(); err != nil {
-					log.Printf("epaper: render: %v", err)
-				}
-			}
-		}
+		nav.Run(guiCtx, tc)
 	}()
 
-	return &epaperState{nav: nav, status: status, td: td, cancelFn: cancel, renderReq: renderReq}
+	return &epaperState{nav: nav, status: status, cancel: cancel}
 }
 
-// UpdateStatus updates the status bar text and triggers a re-render.
+// UpdateStatus updates the status bar text and triggers a re-render via RequestRender.
 func (e *epaperState) UpdateStatus(left, right string) {
 	if e == nil {
 		return
 	}
-	e.mu.Lock()
 	e.status.SetLeft(left)
 	e.status.SetRight(right)
-	e.mu.Unlock()
-	// Non-blocking send — if channel is full, a render is already queued.
-	select {
-	case e.renderReq <- struct{}{}:
-	default:
-	}
+	e.nav.RequestRender()
 }
 
 // Close cancels the GUI goroutine and releases hardware resources.
@@ -144,5 +109,5 @@ func (e *epaperState) Close() {
 	if e == nil {
 		return
 	}
-	e.cancelFn()
+	e.cancel()
 }
