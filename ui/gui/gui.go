@@ -72,7 +72,7 @@ type ContextMenuProvider interface {
 // ContextMenuItem describes one entry in a future context menu.
 type ContextMenuItem struct {
 	Label  string
-	Icon   image.Image // optional, nil = text-only
+	Icon   *Icon // optional, nil = text-only
 	Action func()
 }
 

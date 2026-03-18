@@ -23,7 +23,6 @@ func (m *mockHScrollable) ScrollH(delta int) { m.scrolled += delta }
 // can be satisfied by a concrete type within the package.
 func TestHScrollableInterface_CompileGuard(t *testing.T) {
 	m := &mockHScrollable{}
-	m.scrolled += 0 // suppress unused warning
 	// Verify mockHScrollable satisfies hScrollable at compile time
 	var _ hScrollable = m
 }
