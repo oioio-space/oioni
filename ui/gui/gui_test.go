@@ -760,3 +760,38 @@ func TestNavigator_NoHScrollable_SwipeLeft_Pops(t *testing.T) {
 		t.Errorf("expected depth 1 after swipe-left pop, got %d", nav.Depth())
 	}
 }
+
+// TestNavigatorHandleTouchPassesLogicalCoordinates verifies that HandleTouch
+// receives logical (rotated) coordinates, not raw physical touch coordinates.
+//
+// Physical→logical transform (Rot90, epd.Width=122, epd.Height=250):
+//
+//	logX = pt.Y,  logY = (epd.Width-1) - pt.X = 121 - pt.X
+//
+// ActionSidebar decomposes pt.Y to route a tap to the correct button cell.
+// If it receives physical coordinates instead of logical, the wrong cell is selected.
+func TestNavigatorHandleTouchPassesLogicalCoordinates(t *testing.T) {
+	d := &fakeDisplay{}
+	nav := NewNavigator(d)
+
+	tapped := -1
+	sidebar := NewActionSidebar(
+		SidebarButton{OnTap: func() { tapped = 0 }},
+		SidebarButton{OnTap: func() { tapped = 1 }},
+	)
+	// Sidebar at full logical height: 122px split into two 61px cells.
+	// Cell 0: logical Y 0..60, Cell 1: logical Y 61..121.
+	sidebar.SetBounds(image.Rect(0, 0, 44, 122))
+
+	nav.Push(&Scene{Widgets: []Widget{sidebar}})
+
+	// We want to hit logical (22, 90) — inside cell 1 (Y=90 > 61).
+	// Physical coords: logX=pt.Y → pt.Y=22; logY=121-pt.X → pt.X=121-90=31.
+	nav.handleTouch(touch.TouchPoint{X: 31, Y: 22})
+
+	// With the bug (physical pt.Y=22 used): idx = 22/61 = 0 → wrong cell.
+	// With the fix (logical pt.Y=90 used): idx = 90/61 = 1 → correct.
+	if tapped != 1 {
+		t.Errorf("touch at logical Y=90 should tap cell 1, got %d (coordinate mismatch?)", tapped)
+	}
+}

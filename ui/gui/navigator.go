@@ -180,7 +180,8 @@ func (nav *Navigator) handleTouch(pt touch.TouchPoint) {
 		nav.lastFire[w] = now
 		nav.mu.Unlock()
 
-		if t.HandleTouch(pt) {
+		logTp := touch.TouchPoint{ID: pt.ID, X: uint16(logPt.X), Y: uint16(logPt.Y), Size: pt.Size}
+		if t.HandleTouch(logTp) {
 			break
 		}
 	}
