@@ -32,13 +32,15 @@ func NewHomeScene(nav *gui.Navigator, status *gui.StatusBar) *gui.Scene {
 	)
 	root := gui.NewHBox(gui.Expand(content), gui.FixedSize(sidebar, 44))
 	// epd.Height=250 = logical width (after Rot90), epd.Width=122 = logical height.
-	root.SetBounds(image.Rect(0, 0, epd.Height, epd.Width))
+	// 2px horizontal inset gives padding and ensures carousel fits all 5 items.
+	root.SetBounds(image.Rect(2, 0, epd.Height-2, epd.Width))
 
 	var savedIdx int
 	return &gui.Scene{
 		Title: "Home",
-		// carousel listed twice: root renders it; direct entry enables hScrollable routing.
-		Widgets: []gui.Widget{root, carousel},
+		// root renders everything; carousel at top level enables hScrollable routing;
+		// sidebar at top level ensures Navigator touch routing reaches it.
+		Widgets: []gui.Widget{root, carousel, sidebar},
 		OnLeave: func() { savedIdx = carousel.Index() },
 		OnEnter: func() { carousel.SetIndex(savedIdx) },
 	}

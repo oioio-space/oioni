@@ -522,10 +522,10 @@ func TestNavigatorTouchRoutingCallsHandler(t *testing.T) {
 	btn.SetBounds(image.Rect(10, 10, 60, 30))
 	s := &Scene{Widgets: []Widget{btn}}
 	nav.Push(s)
-	// logX = clamp(pt.Y, 0, 249) = 20 → want inside [10,60)
+	// logX = clamp((250-1)-pt.Y, 0, 249) = 249-229 = 20 → want inside [10,60)
 	// logY = clamp((122-1)-pt.X, 0, 121) = 121-106 = 15 → want inside [10,30)
-	// So pt.Y=20, pt.X=106
-	nav.handleTouch(touch.TouchPoint{X: 106, Y: 20})
+	// So pt.Y=229, pt.X=106
+	nav.handleTouch(touch.TouchPoint{X: 106, Y: 229})
 	if !clicked {
 		t.Error("touch should route to button and fire OnClick")
 	}
@@ -598,9 +598,9 @@ func TestNavigator_SwipeLeft_Pops(t *testing.T) {
 	nav.Push(sub)  //nolint:errcheck
 
 	events := make(chan touch.TouchEvent, 4)
-	// Swipe left: physical Y decreases (logX = pt.Y → decreasing Y = moving left).
-	events <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 50, Y: 200}}}
+	// Swipe left: physical Y increases (logX = 249-pt.Y → increasing Y = decreasing logX = moving left).
 	events <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 50, Y: 150}}}
+	events <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 50, Y: 200}}}
 	close(events) // Run exits naturally when channel is closed and drained
 
 	ctx := context.Background()
@@ -720,10 +720,10 @@ func TestNavigator_HScrollable_SwipeLeft(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		// Swipe left: physical Y decreases (logX = pt.Y → decreasing Y = moving left).
-		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 50, Y: 200}}}
+		// Swipe left: physical Y increases (logX = 249-pt.Y → increasing Y = decreasing logX = moving left).
+		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 50, Y: 150}}}
 		time.Sleep(50 * time.Millisecond)
-		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 50, Y: 150}}} // ΔY=-50
+		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 50, Y: 200}}} // ΔY=+50
 	}()
 	nav.Run(ctx, tc)
 
@@ -749,10 +749,10 @@ func TestNavigator_NoHScrollable_SwipeLeft_Pops(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		// Swipe left: physical Y decreases (logX = pt.Y → decreasing Y = moving left).
-		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 50, Y: 200}}}
+		// Swipe left: physical Y increases (logX = 249-pt.Y → increasing Y = decreasing logX = moving left).
+		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 50, Y: 150}}}
 		time.Sleep(50 * time.Millisecond)
-		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 50, Y: 150}}} // ΔY=-50
+		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 50, Y: 200}}} // ΔY=+50
 	}()
 	nav.Run(ctx, tc)
 
@@ -766,7 +766,7 @@ func TestNavigator_NoHScrollable_SwipeLeft_Pops(t *testing.T) {
 //
 // Physical→logical transform (Rot90, epd.Width=122, epd.Height=250):
 //
-//	logX = pt.Y,  logY = (epd.Width-1) - pt.X = 121 - pt.X
+//	logX = (epd.Height-1) - pt.Y = 249 - pt.Y,  logY = (epd.Width-1) - pt.X = 121 - pt.X
 //
 // ActionSidebar decomposes pt.Y to route a tap to the correct button cell.
 // If it receives physical coordinates instead of logical, the wrong cell is selected.
@@ -786,8 +786,8 @@ func TestNavigatorHandleTouchPassesLogicalCoordinates(t *testing.T) {
 	nav.Push(&Scene{Widgets: []Widget{sidebar}})
 
 	// We want to hit logical (22, 90) — inside cell 1 (Y=90 > 61).
-	// Physical coords: logX=pt.Y → pt.Y=22; logY=121-pt.X → pt.X=121-90=31.
-	nav.handleTouch(touch.TouchPoint{X: 31, Y: 22})
+	// Physical coords: logX=249-pt.Y → pt.Y=249-22=227; logY=121-pt.X → pt.X=121-90=31.
+	nav.handleTouch(touch.TouchPoint{X: 31, Y: 227})
 
 	// With the bug (physical pt.Y=22 used): idx = 22/61 = 0 → wrong cell.
 	// With the fix (logical pt.Y=90 used): idx = 90/61 = 1 → correct.

@@ -11,9 +11,9 @@ import (
 )
 
 const (
-	carouselButtonSize = 80 // px per button square
-	carouselGap        = 6  // px gap between buttons
-	carouselLeading    = 13 // px leading indent
+	carouselButtonSize = 38 // px per button square (5 items fit in ~200px content width)
+	carouselGap        = 2  // px gap between buttons
+	carouselLeading    = 3  // px leading indent
 	carouselPagHeight  = 8  // px for pagination dots row at bottom
 )
 

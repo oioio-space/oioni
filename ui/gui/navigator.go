@@ -178,7 +178,7 @@ func (nav *Navigator) Render() error {
 
 // handleTouch maps physical touch coords → logical coords, then routes to widgets.
 func (nav *Navigator) handleTouch(pt touch.TouchPoint) {
-	logX := clamp(int(pt.Y), 0, epd.Height-1)
+	logX := clamp((epd.Height-1)-int(pt.Y), 0, epd.Height-1)
 	logY := clamp((epd.Width-1)-int(pt.X), 0, epd.Width-1)
 	logPt := image.Pt(logX, logY)
 
@@ -330,7 +330,7 @@ func (nav *Navigator) Run(ctx context.Context, events <-chan touch.TouchEvent) {
 				swipePt = nil
 				// Physical→logical: logX = pt.Y, logY = 121 - pt.X
 				// Horizontal (left/right) corresponds to physical Y; vertical to physical X.
-				dx := int(pt.Y) - int(firstPt.Y)
+				dx := int(firstPt.Y) - int(pt.Y)
 				dy := int(pt.X) - int(firstPt.X)
 				adx, ady := dx, dy
 				if adx < 0 {

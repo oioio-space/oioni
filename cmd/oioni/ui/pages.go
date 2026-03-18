@@ -48,11 +48,13 @@ func newCategoryScene(nav *gui.Navigator, title string) *gui.Scene {
 		gui.Expand(placeholder),
 	)
 	root := gui.NewHBox(gui.Expand(content), gui.FixedSize(sidebar, 44))
-	root.SetBounds(image.Rect(0, 0, epd.Height, epd.Width))
+	// 2px horizontal inset for padding; sidebar also listed directly for touch routing.
+	root.SetBounds(image.Rect(2, 0, epd.Height-2, epd.Width))
 
 	return &gui.Scene{
-		Title:   title,
-		Widgets: []gui.Widget{root},
+		Title: title,
+		// root renders everything; sidebar at top level ensures Navigator touch routing reaches it.
+		Widgets: []gui.Widget{root, sidebar},
 	}
 }
 
