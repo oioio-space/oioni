@@ -53,6 +53,29 @@ type scrollable interface {
 	Scroll(dy int)
 }
 
+// hScrollable is package-internal. Navigator.Run() routes horizontal swipes to
+// the first widget at the TOP LEVEL of Scene.Widgets that implements this interface.
+// Widgets nested inside layout containers (VBox, HBox…) are NOT found — hScrollable
+// widgets must be direct members of Scene.Widgets.
+type hScrollable interface {
+	ScrollH(delta int)
+}
+
+// ContextMenuProvider is an optional exported interface any widget can implement.
+// Navigator checks for it on long-press (>500ms). Currently a no-op hook point:
+// Navigator will type-assert silently if the feature is not yet wired.
+// Exported so widgets in cmd/oioni can implement it for future use.
+type ContextMenuProvider interface {
+	ContextMenu() []ContextMenuItem
+}
+
+// ContextMenuItem describes one entry in a future context menu.
+type ContextMenuItem struct {
+	Label  string
+	Icon   image.Image // optional, nil = text-only
+	Action func()
+}
+
 // BaseWidget provides dirty-flag and bounds bookkeeping.
 // Embed in custom widgets and override Draw, PreferredSize, MinSize.
 //

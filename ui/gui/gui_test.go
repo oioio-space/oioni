@@ -11,6 +11,23 @@ import (
 	"github.com/oioio-space/oioni/drivers/touch"
 )
 
+// mockHScrollable is a package-level test helper used by TestHScrollableInterface_CompileGuard.
+type mockHScrollable struct {
+	BaseWidget
+	scrolled int
+}
+
+func (m *mockHScrollable) ScrollH(delta int) { m.scrolled += delta }
+
+// TestHScrollableInterface_CompileGuard verifies the hScrollable interface
+// can be satisfied by a concrete type within the package.
+func TestHScrollableInterface_CompileGuard(t *testing.T) {
+	m := &mockHScrollable{}
+	m.scrolled += 0 // suppress unused warning
+	// Verify mockHScrollable satisfies hScrollable at compile time
+	var _ hScrollable = m
+}
+
 func TestBaseWidgetInitiallyClean(t *testing.T) {
 	var b BaseWidget
 	if b.IsDirty() {
