@@ -37,6 +37,7 @@ func (nb *NavBar) Draw(c *canvas.Canvas) {
 	if b.Empty() {
 		return
 	}
+	c.DrawRect(b, canvas.White, true)
 	f := canvas.EmbeddedFont(8)
 	text := strings.Join(nb.path, " › ")
 	maxW := b.Dx() - 4
