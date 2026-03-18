@@ -255,6 +255,7 @@ func (nav *Navigator) handleTouch(pt touch.TouchPoint) {
 func (nav *Navigator) Run(ctx context.Context, events <-chan touch.TouchEvent) {
 	var swipePt *touch.TouchPoint
 	var swipeTimer *time.Timer
+	var swipeConsumed bool // true after a swipe fires; prevents re-fire from same gesture burst
 	timerCh := func() <-chan time.Time {
 		if swipeTimer != nil {
 			return swipeTimer.C
@@ -262,10 +263,11 @@ func (nav *Navigator) Run(ctx context.Context, events <-chan touch.TouchEvent) {
 		return nil
 	}
 	flush := func() {
-		if swipePt != nil {
+		if swipePt != nil && !swipeConsumed {
 			nav.handleTouch(*swipePt)
-			swipePt = nil
 		}
+		swipePt = nil
+		swipeConsumed = false
 		if swipeTimer != nil {
 			swipeTimer.Stop()
 			swipeTimer = nil
@@ -351,11 +353,12 @@ func (nav *Navigator) Run(ctx context.Context, events <-chan touch.TouchEvent) {
 			resetIdle()
 
 		case <-timerCh():
-			if swipePt != nil {
+			if swipePt != nil && !swipeConsumed {
 				nav.handleTouch(*swipePt)
-				swipePt = nil
 			}
+			swipePt = nil
 			swipeTimer = nil
+			swipeConsumed = false
 
 		case ev, ok := <-touchEvents:
 			if !ok {
@@ -384,6 +387,10 @@ func (nav *Navigator) Run(ctx context.Context, events <-chan touch.TouchEvent) {
 				swipeTimer = nil
 				firstPt := *swipePt
 				swipePt = nil
+				if swipeConsumed {
+					// Gesture already handled — consume remaining event pairs silently.
+					continue
+				}
 				// Physical→logical: logX = pt.Y, logY = 121 - pt.X
 				// Horizontal (left/right) corresponds to physical Y; vertical to physical X.
 				dx := int(firstPt.Y) - int(pt.Y)
@@ -397,6 +404,7 @@ func (nav *Navigator) Run(ctx context.Context, events <-chan touch.TouchEvent) {
 				}
 				const threshold = 30
 				if adx >= ady && adx > threshold {
+					swipeConsumed = true
 					if dx < 0 {
 						// Swipe left: route to hScrollable or Pop
 						routed := false
@@ -424,6 +432,7 @@ func (nav *Navigator) Run(ctx context.Context, events <-chan touch.TouchEvent) {
 						}
 					}
 				} else if ady > adx && ady > threshold {
+					swipeConsumed = true
 					if len(nav.stack) > 0 {
 						for _, w := range nav.stack[len(nav.stack)-1].Widgets {
 							if s, ok := w.(scrollable); ok {

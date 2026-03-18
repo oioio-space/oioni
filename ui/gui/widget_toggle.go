@@ -37,7 +37,6 @@ func (t *Toggle) Draw(c *canvas.Canvas) {
 		knob = image.Rect(mid+1, r.Min.Y+1, r.Max.X-1, r.Max.Y-1)
 	}
 	c.DrawRect(knob, canvas.Black, true)
-	t.MarkClean()
 }
 
 func (t *Toggle) HandleTouch(_ touch.TouchPoint) bool {

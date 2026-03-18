@@ -69,7 +69,9 @@ func ShowMenu(nav *Navigator, title string, items []MenuItem) {
 	top.SetBounds(image.Rect(0, 0, epd.Height, epd.Width))
 
 	scene := &Scene{
-		Widgets: []Widget{top},
+		// top renders everything; menu listed at top level so Navigator can route
+		// vertical swipes to it via the scrollable interface.
+		Widgets: []Widget{top, menu},
 		OnEnter: func() { menu.SetDirty() },
 	}
 	_ = nav.Push(scene)

@@ -82,7 +82,6 @@ func (s *Slider) Draw(c *canvas.Canvas) {
 		}
 		c.DrawText(lx, r.Min.Y, label, f, canvas.Black)
 	}
-	s.MarkClean()
 }
 
 func (s *Slider) HandleTouch(pt touch.TouchPoint) bool {

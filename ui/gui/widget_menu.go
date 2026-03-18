@@ -96,7 +96,6 @@ func (m *Menu) Draw(c *canvas.Canvas) {
 		bar := image.Rect(r.Max.X-2, barY, r.Max.X, barY+barH)
 		c.DrawRect(bar, canvas.Black, true)
 	}
-	m.MarkClean()
 }
 
 func (m *Menu) drawItemContent(c *canvas.Canvas, item MenuItem, row image.Rectangle, f canvas.Font, col color.Color) {
