@@ -16,6 +16,7 @@ const debounce = 200 * time.Millisecond
 
 // Scene is a screen's widget tree and optional lifecycle hooks.
 type Scene struct {
+	Title   string   // metadata for NavBar; Navigator does not read it
 	Widgets []Widget
 	OnEnter func() // called when scene becomes active
 	OnLeave func() // called when scene is popped
@@ -37,12 +38,15 @@ const (
 // In tests, call these methods directly; in production, they must be called
 // from inside scene callbacks (OnEnter/OnLeave) or before Run().
 type Navigator struct {
-	display  Display
-	rm       *refreshManager
-	canvas   *canvas.Canvas
-	stack    []*Scene
-	mu       sync.Mutex
-	lastFire map[Widget]time.Time
+	display     Display
+	rm          *refreshManager
+	canvas      *canvas.Canvas
+	stack       []*Scene
+	mu          sync.Mutex
+	lastFire    map[Widget]time.Time
+	renderCh    chan struct{}  // buffered(1): non-blocking RequestRender
+	wakeCh      chan struct{}  // buffered(1): non-blocking Wake()
+	idleTimeout time.Duration // 0 = no idle sleep
 }
 
 // NewNavigator creates a Navigator. The Display must outlive the Navigator.
@@ -53,6 +57,35 @@ func NewNavigator(d Display) *Navigator {
 		rm:       newRefreshManager(d),
 		canvas:   c,
 		lastFire: make(map[Widget]time.Time),
+		renderCh: make(chan struct{}, 1),
+		wakeCh:   make(chan struct{}, 1),
+	}
+}
+
+// NewNavigatorWithIdle creates a Navigator with idle sleep after idleTimeout of inactivity.
+// After idleTimeout, display.Sleep() is called. On next touch or Wake(), display is re-initialized.
+func NewNavigatorWithIdle(d Display, idleTimeout time.Duration) *Navigator {
+	nav := NewNavigator(d)
+	nav.idleTimeout = idleTimeout
+	return nav
+}
+
+// Depth returns the number of scenes on the stack (0=empty, 1=root only).
+func (nav *Navigator) Depth() int { return len(nav.stack) }
+
+// RequestRender triggers a re-render. Non-blocking: if a render is already queued, this is a no-op.
+func (nav *Navigator) RequestRender() {
+	select {
+	case nav.renderCh <- struct{}{}:
+	default:
+	}
+}
+
+// Wake wakes the display if sleeping and triggers a full refresh. Non-blocking.
+func (nav *Navigator) Wake() {
+	select {
+	case nav.wakeCh <- struct{}{}:
+	default:
 	}
 }
 
@@ -164,7 +197,6 @@ func (nav *Navigator) Run(ctx context.Context, events <-chan touch.TouchEvent) {
 		}
 		return nil
 	}
-
 	flush := func() {
 		if swipePt != nil {
 			nav.handleTouch(*swipePt)
@@ -176,60 +208,138 @@ func (nav *Navigator) Run(ctx context.Context, events <-chan touch.TouchEvent) {
 		}
 	}
 
+	// Idle sleep state
+	sleeping := false
+	var idleTimer *time.Timer
+	var idleTimerCh <-chan time.Time
+
+	drainTimer := func(t *time.Timer) {
+		if !t.Stop() {
+			select {
+			case <-t.C:
+			default:
+			}
+		}
+	}
+
+	resetIdle := func() {
+		if nav.idleTimeout <= 0 {
+			return
+		}
+		if idleTimer != nil {
+			drainTimer(idleTimer)
+		}
+		idleTimer = time.NewTimer(nav.idleTimeout)
+		idleTimerCh = idleTimer.C
+	}
+	if nav.idleTimeout > 0 {
+		resetIdle()
+	}
+
+	// nil events channel would block forever in select; replace with never-firing channel
+	touchEvents := events
+	if touchEvents == nil {
+		touchEvents = make(chan touch.TouchEvent)
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
 			flush()
 			return
 
+		case <-idleTimerCh:
+			if !sleeping {
+				sleeping = true
+				_ = nav.display.Sleep()
+			}
+			idleTimerCh = nil // prevent re-firing until reset
+
+		case <-nav.wakeCh:
+			if sleeping {
+				sleeping = false
+				_ = nav.display.Init(epd.ModeFull)
+				if len(nav.stack) > 0 {
+					_ = nav.rm.RenderWith(nav.canvas, nav.stack[len(nav.stack)-1].Widgets, true)
+				}
+			}
+			resetIdle()
+
+		case <-nav.renderCh:
+			nav.Render() //nolint:errcheck
+
 		case <-timerCh():
-			// No second touch arrived within 300ms — treat buffered event as tap.
 			if swipePt != nil {
 				nav.handleTouch(*swipePt)
 				swipePt = nil
 			}
 			swipeTimer = nil
 
-		case ev, ok := <-events:
+		case ev, ok := <-touchEvents:
 			if !ok {
 				flush()
 				return
 			}
+			// Wake display if sleeping before routing any touch
+			if sleeping {
+				sleeping = false
+				_ = nav.display.Init(epd.ModeFull)
+				if len(nav.stack) > 0 {
+					_ = nav.rm.RenderWith(nav.canvas, nav.stack[len(nav.stack)-1].Widgets, true)
+				}
+			}
+			// Reset idle timer on every touch
+			resetIdle()
+
 			for _, pt := range ev.Points {
 				if swipePt == nil {
-					// First touch: buffer, start timer.
 					cp := pt
 					swipePt = &cp
 					swipeTimer = time.NewTimer(300 * time.Millisecond)
 					continue
 				}
-				// Second touch within 300ms: classify.
 				swipeTimer.Stop()
 				swipeTimer = nil
-				firstPt := *swipePt // save before clearing
+				firstPt := *swipePt
 				swipePt = nil
-				// Cast to int — touch coords may be uint16, negative delta would wrap
 				dx := int(pt.X) - int(firstPt.X)
 				dy := int(pt.Y) - int(firstPt.Y)
-
-				adx := dx
+				adx, ady := dx, dy
 				if adx < 0 {
 					adx = -adx
 				}
-				ady := dy
 				if ady < 0 {
 					ady = -ady
 				}
-
 				const threshold = 30
 				if adx >= ady && adx > threshold {
-					// Horizontal swipe
 					if dx < 0 {
-						nav.Pop() //nolint
+						// Swipe left: route to hScrollable or Pop
+						routed := false
+						if len(nav.stack) > 0 {
+							for _, w := range nav.stack[len(nav.stack)-1].Widgets {
+								if hs, ok := w.(hScrollable); ok {
+									hs.ScrollH(-1)
+									routed = true
+									break
+								}
+							}
+						}
+						if !routed {
+							nav.Pop() //nolint:errcheck
+						}
+					} else {
+						// Swipe right: route to hScrollable
+						if len(nav.stack) > 0 {
+							for _, w := range nav.stack[len(nav.stack)-1].Widgets {
+								if hs, ok := w.(hScrollable); ok {
+									hs.ScrollH(+1)
+									break
+								}
+							}
+						}
 					}
-					// SwipeRight: reserved, no-op
 				} else if ady > adx && ady > threshold {
-					// Vertical swipe — route to scrollable top widget
 					if len(nav.stack) > 0 {
 						for _, w := range nav.stack[len(nav.stack)-1].Widgets {
 							if s, ok := w.(scrollable); ok {
@@ -243,7 +353,6 @@ func (nav *Navigator) Run(ctx context.Context, events <-chan touch.TouchEvent) {
 						}
 					}
 				} else {
-					// Not a swipe — deliver both touches as taps
 					nav.handleTouch(firstPt)
 					nav.handleTouch(pt)
 				}

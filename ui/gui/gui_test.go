@@ -17,7 +17,8 @@ type mockHScrollable struct {
 	scrolled int
 }
 
-func (m *mockHScrollable) ScrollH(delta int) { m.scrolled += delta }
+func (m *mockHScrollable) ScrollH(delta int)        { m.scrolled += delta }
+func (m *mockHScrollable) Draw(c *canvas.Canvas)   {}
 
 // TestHScrollableInterface_CompileGuard verifies the hScrollable interface
 // can be satisfied by a concrete type within the package.
@@ -392,6 +393,7 @@ type fakeDisplay struct {
 	baseCalled    int
 	partialCalled int
 	fastCalled    int
+	sleepCalled   int
 	lastMode      epd.Mode
 }
 
@@ -399,7 +401,7 @@ func (f *fakeDisplay) Init(m epd.Mode) error         { f.initCalled++; f.lastMod
 func (f *fakeDisplay) DisplayBase(b []byte) error    { f.baseCalled++; return nil }
 func (f *fakeDisplay) DisplayPartial(b []byte) error { f.partialCalled++; return nil }
 func (f *fakeDisplay) DisplayFast(b []byte) error    { f.fastCalled++; return nil }
-func (f *fakeDisplay) Sleep() error                  { return nil }
+func (f *fakeDisplay) Sleep() error                  { f.sleepCalled++; return nil }
 func (f *fakeDisplay) Close() error                  { return nil }
 
 func TestRefreshManagerNoop(t *testing.T) {
@@ -653,5 +655,127 @@ func TestNavigator_SlowTap_NotLost(t *testing.T) {
 
 	if !tapped {
 		t.Error("slow single tap should not be lost")
+	}
+}
+
+func TestNavigatorDepth_Empty(t *testing.T) {
+	fd := &fakeDisplay{}
+	nav := NewNavigator(fd)
+	if got := nav.Depth(); got != 0 {
+		t.Errorf("Depth() = %d, want 0", got)
+	}
+}
+
+func TestNavigatorDepth_AfterPush(t *testing.T) {
+	fd := &fakeDisplay{}
+	nav := NewNavigator(fd)
+	nav.Push(&Scene{Widgets: []Widget{}}) //nolint:errcheck
+	if got := nav.Depth(); got != 1 {
+		t.Errorf("Depth() after 1 push = %d, want 1", got)
+	}
+	nav.Push(&Scene{Widgets: []Widget{}}) //nolint:errcheck
+	if got := nav.Depth(); got != 2 {
+		t.Errorf("Depth() after 2 pushes = %d, want 2", got)
+	}
+	nav.Pop() //nolint:errcheck
+	if got := nav.Depth(); got != 1 {
+		t.Errorf("Depth() after pop = %d, want 1", got)
+	}
+}
+
+func TestSceneTitle(t *testing.T) {
+	s := &Scene{Title: "Config", Widgets: []Widget{}}
+	if s.Title != "Config" {
+		t.Errorf("Scene.Title = %q, want %q", s.Title, "Config")
+	}
+}
+
+func TestNavigatorIdleSleep_CallsSleep(t *testing.T) {
+	fd := &fakeDisplay{}
+	nav := NewNavigatorWithIdle(fd, 20*time.Millisecond)
+	nav.Push(&Scene{Widgets: []Widget{}}) //nolint:errcheck
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	nav.Run(ctx, nil)
+
+	if fd.sleepCalled == 0 {
+		t.Error("expected Sleep() to be called after idle timeout")
+	}
+}
+
+func TestNavigatorIdleReset_OnTouch(t *testing.T) {
+	fd := &fakeDisplay{}
+	nav := NewNavigatorWithIdle(fd, 200*time.Millisecond)
+	nav.Push(&Scene{Widgets: []Widget{}}) //nolint:errcheck
+
+	tc := make(chan touch.TouchEvent, 5)
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 10, Y: 10}}}
+		time.Sleep(50 * time.Millisecond)
+		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 10, Y: 10}}}
+	}()
+
+	nav.Run(ctx, tc)
+
+	if fd.sleepCalled > 0 {
+		t.Error("Sleep should not be called when touch resets the timer")
+	}
+}
+
+func TestNavigator_HScrollable_SwipeLeft(t *testing.T) {
+	fd := &fakeDisplay{}
+	nav := NewNavigator(fd)
+	hs := &mockHScrollable{}
+	hs.SetBounds(image.Rect(0, 0, 200, 100))
+	nav.Push(&Scene{Widgets: []Widget{hs}}) //nolint:errcheck
+
+	tc := make(chan touch.TouchEvent, 10)
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	go func() {
+		// First event buffers the touch point; second event classifies the swipe.
+		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 100, Y: 50}}}
+		time.Sleep(50 * time.Millisecond)
+		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 60, Y: 50}}} // ΔX=-40
+	}()
+	nav.Run(ctx, tc)
+
+	if hs.scrolled >= 0 {
+		t.Errorf("expected negative cumulative scroll (ScrollH(-1) called), got %d", hs.scrolled)
+	}
+}
+
+func TestNavigator_NoHScrollable_SwipeLeft_Pops(t *testing.T) {
+	fd := &fakeDisplay{}
+	nav := NewNavigator(fd)
+	root := &Scene{Widgets: []Widget{}}
+	sub := &Scene{Widgets: []Widget{}}
+	nav.Push(root) //nolint:errcheck
+	nav.Push(sub)  //nolint:errcheck
+
+	if nav.Depth() != 2 {
+		t.Fatalf("expected depth 2, got %d", nav.Depth())
+	}
+
+	tc := make(chan touch.TouchEvent, 10)
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	go func() {
+		// First event buffers the touch point; second event classifies the swipe.
+		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 100, Y: 50}}}
+		time.Sleep(50 * time.Millisecond)
+		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 60, Y: 50}}} // ΔX=-40
+	}()
+	nav.Run(ctx, tc)
+
+	if nav.Depth() != 1 {
+		t.Errorf("expected depth 1 after swipe-left pop, got %d", nav.Depth())
 	}
 }
