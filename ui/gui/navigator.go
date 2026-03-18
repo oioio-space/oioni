@@ -143,6 +143,37 @@ func (nav *Navigator) Pop() error {
 	return nav.rm.RenderWith(nav.canvas, prev.Widgets, true)
 }
 
+// PopTo pops scenes until len(stack) == depth, calling OnLeave for each removed
+// scene (top-first) and rendering exactly once for the new top.
+// If depth >= current depth, it is a noop. depth is clamped to at least 1.
+func (nav *Navigator) PopTo(depth int) error {
+	if depth < 1 {
+		depth = 1
+	}
+	if len(nav.stack) <= depth {
+		return nil
+	}
+	// Call OnLeave top-first for all scenes being removed.
+	for i := len(nav.stack) - 1; i >= depth; i-- {
+		s := nav.stack[i]
+		if s.OnLeave != nil {
+			s.OnLeave()
+		}
+		stopWidgets(s.Widgets)
+		nav.mu.Lock()
+		for _, w := range s.Widgets {
+			delete(nav.lastFire, w)
+		}
+		nav.mu.Unlock()
+	}
+	nav.stack = nav.stack[:depth]
+	top := nav.stack[depth-1]
+	if top.OnEnter != nil {
+		top.OnEnter()
+	}
+	return nav.rm.RenderWith(nav.canvas, top.Widgets, true)
+}
+
 // Render redraws the current scene's dirty widgets (partial or noop).
 func (nav *Navigator) Render() error {
 	if len(nav.stack) == 0 {

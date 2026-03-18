@@ -56,9 +56,8 @@ func newCategoryScene(nav *gui.Navigator, title string) *gui.Scene {
 	}
 }
 
-// popToRoot pops all scenes until only the root (home) scene remains.
+// popToRoot pops all scenes until only the root (home) scene remains,
+// rendering exactly once via nav.PopTo(1).
 func popToRoot(nav *gui.Navigator) {
-	for nav.Depth() > 1 {
-		nav.Pop() //nolint:errcheck
-	}
+	nav.PopTo(1) //nolint:errcheck
 }

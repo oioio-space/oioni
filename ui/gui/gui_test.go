@@ -795,3 +795,82 @@ func TestNavigatorHandleTouchPassesLogicalCoordinates(t *testing.T) {
 		t.Errorf("touch at logical Y=90 should tap cell 1, got %d (coordinate mismatch?)", tapped)
 	}
 }
+
+// --- PopTo tests ---
+
+func TestPopTo_NopWhenAlreadyAtDepth(t *testing.T) {
+	d := &fakeDisplay{}
+	nav := NewNavigator(d)
+	nav.Push(&Scene{Widgets: []Widget{NewLabel("root")}})
+	nav.Push(&Scene{Widgets: []Widget{NewLabel("a")}})
+	before := d.baseCalled
+	nav.PopTo(2) // already at depth 2 — noop
+	if nav.Depth() != 2 {
+		t.Errorf("depth = %d, want 2", nav.Depth())
+	}
+	if d.baseCalled != before {
+		t.Errorf("PopTo at current depth triggered render (%d extra calls)", d.baseCalled-before)
+	}
+}
+
+func TestPopTo_PopsToRequestedDepth(t *testing.T) {
+	d := &fakeDisplay{}
+	nav := NewNavigator(d)
+	nav.Push(&Scene{Widgets: []Widget{NewLabel("root")}})
+	nav.Push(&Scene{Widgets: []Widget{NewLabel("a")}})
+	nav.Push(&Scene{Widgets: []Widget{NewLabel("b")}})
+	nav.Push(&Scene{Widgets: []Widget{NewLabel("c")}})
+	// depth is 4; pop to 1 (root only)
+	nav.PopTo(1)
+	if got := nav.Depth(); got != 1 {
+		t.Errorf("depth after PopTo(1) = %d, want 1", got)
+	}
+}
+
+func TestPopTo_RendersExactlyOnce(t *testing.T) {
+	d := &fakeDisplay{}
+	nav := NewNavigator(d)
+	nav.Push(&Scene{Widgets: []Widget{NewLabel("root")}})
+	nav.Push(&Scene{Widgets: []Widget{NewLabel("a")}})
+	nav.Push(&Scene{Widgets: []Widget{NewLabel("b")}})
+	nav.Push(&Scene{Widgets: []Widget{NewLabel("c")}})
+	// 4 pushes = 4 baseCalled so far
+	before := d.baseCalled
+	nav.PopTo(1) // pops 3 scenes — must produce exactly 1 render
+	if got := d.baseCalled - before; got != 1 {
+		t.Errorf("PopTo rendered %d times, want exactly 1", got)
+	}
+}
+
+func TestPopTo_CallsOnLeaveForEachPoppedScene(t *testing.T) {
+	d := &fakeDisplay{}
+	nav := NewNavigator(d)
+	var left []string
+	nav.Push(&Scene{Widgets: []Widget{NewLabel("root")}})
+	nav.Push(&Scene{Widgets: []Widget{NewLabel("a")}, OnLeave: func() { left = append(left, "a") }})
+	nav.Push(&Scene{Widgets: []Widget{NewLabel("b")}, OnLeave: func() { left = append(left, "b") }})
+	nav.Push(&Scene{Widgets: []Widget{NewLabel("c")}, OnLeave: func() { left = append(left, "c") }})
+	// Push calls OnLeave on the previous top; reset to count only PopTo's calls.
+	left = nil
+	nav.PopTo(1)
+	if len(left) != 3 {
+		t.Errorf("OnLeave called %d times, want 3; left=%v", len(left), left)
+	}
+}
+
+func TestPopTo_CallsOnEnterForNewTop(t *testing.T) {
+	d := &fakeDisplay{}
+	nav := NewNavigator(d)
+	entered := false
+	nav.Push(&Scene{
+		Widgets: []Widget{NewLabel("root")},
+		OnEnter: func() { entered = true },
+	})
+	nav.Push(&Scene{Widgets: []Widget{NewLabel("a")}})
+	nav.Push(&Scene{Widgets: []Widget{NewLabel("b")}})
+	entered = false // reset after initial pushes
+	nav.PopTo(1)
+	if !entered {
+		t.Error("OnEnter not called for root scene after PopTo(1)")
+	}
+}
