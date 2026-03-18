@@ -47,6 +47,7 @@ type Navigator struct {
 	renderCh     chan struct{}  // buffered(1): non-blocking RequestRender
 	wakeCh       chan struct{}  // buffered(1): non-blocking Wake()
 	regenerateCh chan struct{}  // buffered(1): non-blocking RequestRegenerate (black→white purge)
+	dispatchFn   chan func()   // buffered(1): functions to call from Run()'s goroutine
 	idleTimeout  time.Duration // 0 = no idle sleep
 }
 
@@ -61,6 +62,7 @@ func NewNavigator(d Display) *Navigator {
 		renderCh:     make(chan struct{}, 1),
 		wakeCh:       make(chan struct{}, 1),
 		regenerateCh: make(chan struct{}, 1),
+		dispatchFn:   make(chan func(), 1),
 	}
 }
 
@@ -97,6 +99,17 @@ func (nav *Navigator) Wake() {
 func (nav *Navigator) RequestRegenerate() {
 	select {
 	case nav.regenerateCh <- struct{}{}:
+	default:
+	}
+}
+
+// Dispatch enqueues fn to be called from Run()'s goroutine on the next loop iteration.
+// Non-blocking: if a function is already queued, this call is dropped (rapid taps are
+// naturally debounced). Use Dispatch when calling Push/Pop from background goroutines
+// (e.g. time.AfterFunc callbacks) to avoid data races with Run().
+func (nav *Navigator) Dispatch(fn func()) {
+	select {
+	case nav.dispatchFn <- fn:
 	default:
 	}
 }
@@ -327,6 +340,15 @@ func (nav *Navigator) Run(ctx context.Context, events <-chan touch.TouchEvent) {
 
 		case <-nav.renderCh:
 			nav.Render() //nolint:errcheck
+
+		case fn := <-nav.dispatchFn:
+			if sleeping {
+				sleeping = false
+				_ = nav.display.Init(epd.ModeFull)
+			}
+			fn()
+			nav.Render() //nolint:errcheck
+			resetIdle()
 
 		case <-timerCh():
 			if swipePt != nil {

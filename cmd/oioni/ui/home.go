@@ -13,11 +13,11 @@ import (
 // Scene.Widgets (for Navigator hScrollable routing).
 func NewHomeScene(nav *gui.Navigator, status *gui.StatusBar) *gui.Scene {
 	carousel := gui.NewIconCarousel([]gui.CarouselItem{
-		{Icon: Icons.Config, Label: "Config", OnTap: func() { nav.Push(NewConfigScene(nav)) }},  //nolint:errcheck
-		{Icon: Icons.System, Label: "System", OnTap: func() { nav.Push(NewSystemScene(nav)) }},  //nolint:errcheck
-		{Icon: Icons.Attack, Label: "Attack", OnTap: func() { nav.Push(NewAttackScene(nav)) }},  //nolint:errcheck
-		{Icon: Icons.DFIR, Label: "DFIR", OnTap: func() { nav.Push(NewDFIRScene(nav)) }},        //nolint:errcheck
-		{Icon: Icons.Info, Label: "Info", OnTap: func() { nav.Push(NewInfoScene(nav)) }},         //nolint:errcheck
+		{Icon: Icons.Config, Label: "Config", OnTap: func() { nav.Dispatch(func() { nav.Push(NewConfigScene(nav)) }) }},  //nolint:errcheck
+		{Icon: Icons.System, Label: "System", OnTap: func() { nav.Dispatch(func() { nav.Push(NewSystemScene(nav)) }) }},  //nolint:errcheck
+		{Icon: Icons.Attack, Label: "Attack", OnTap: func() { nav.Dispatch(func() { nav.Push(NewAttackScene(nav)) }) }},  //nolint:errcheck
+		{Icon: Icons.DFIR, Label: "DFIR", OnTap: func() { nav.Dispatch(func() { nav.Push(NewDFIRScene(nav)) }) }},        //nolint:errcheck
+		{Icon: Icons.Info, Label: "Info", OnTap: func() { nav.Dispatch(func() { nav.Push(NewInfoScene(nav)) }) }},         //nolint:errcheck
 	})
 
 	navbar := gui.NewNavBar("Home")
