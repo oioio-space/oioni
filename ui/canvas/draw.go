@@ -5,6 +5,66 @@ import (
 	"image/color"
 )
 
+// --- dithering helpers ---
+
+// imageLuma returns BT.601 luma for the pixel at (x,y) in [0, 255].
+func imageLuma(img image.Image, x, y int) float32 {
+	r, g, b, _ := img.At(x, y).RGBA() // 0..65535
+	return float32(r>>8)*0.299 + float32(g>>8)*0.587 + float32(b>>8)*0.114
+}
+
+// floydSteinberg dithers the luma float32 buffer (w×h) to the canvas at offset (ox,oy).
+// buf is consumed (modified in place) so callers must pass a mutable copy.
+func floydSteinberg(cv *Canvas, ox, oy, w, h int, buf []float32) {
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			old := buf[y*w+x]
+			var newVal float32
+			if old >= 128.0 {
+				newVal = 255.0
+				cv.SetPixel(ox+x, oy+y, White)
+			} else {
+				cv.SetPixel(ox+x, oy+y, Black)
+			}
+			quant := old - newVal
+			if x+1 < w {
+				buf[y*w+x+1] += quant * 7 / 16
+			}
+			if y+1 < h {
+				if x > 0 {
+					buf[(y+1)*w+x-1] += quant * 3 / 16
+				}
+				buf[(y+1)*w+x] += quant * 5 / 16
+				if x+1 < w {
+					buf[(y+1)*w+x+1] += quant * 1 / 16
+				}
+			}
+		}
+	}
+}
+
+// boxBlur applies a box blur with the given radius to src and returns a new buffer.
+func boxBlur(src []float32, w, h, radius int) []float32 {
+	dst := make([]float32, len(src))
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			var sum float32
+			count := 0
+			for dy := -radius; dy <= radius; dy++ {
+				for dx := -radius; dx <= radius; dx++ {
+					nx, ny := x+dx, y+dy
+					if nx >= 0 && nx < w && ny >= 0 && ny < h {
+						sum += src[ny*w+nx]
+						count++
+					}
+				}
+			}
+			dst[y*w+x] = sum / float32(count)
+		}
+	}
+	return dst
+}
+
 // DrawImage renders src at logical point pt, thresholding to 1-bit at 50% luminance.
 // Pixels with luminance >= 128 are treated as white; below 128 as black.
 // The image is clipped by SetPixel to the canvas bounds and active clip region.
@@ -55,6 +115,79 @@ func (c *Canvas) DrawImageScaled(r image.Rectangle, img image.Image) {
 			}
 		}
 	}
+}
+
+// DrawImageScaledDithered renders img scaled to fit r using Floyd-Steinberg dithering.
+// Letterboxed and centered. Produces smoother edges on anti-aliased icons vs simple threshold.
+// No-op if img bounds or r are empty.
+func (c *Canvas) DrawImageScaledDithered(r image.Rectangle, img image.Image) {
+	sb := img.Bounds()
+	if sb.Empty() || r.Empty() {
+		return
+	}
+	s := min(float64(r.Dx())/float64(sb.Dx()), float64(r.Dy())/float64(sb.Dy()))
+	dw := int(float64(sb.Dx()) * s)
+	dh := int(float64(sb.Dy()) * s)
+	offX := r.Min.X + (r.Dx()-dw)/2
+	offY := r.Min.Y + (r.Dy()-dh)/2
+
+	luma := make([]float32, dw*dh)
+	for dy := 0; dy < dh; dy++ {
+		for dx := 0; dx < dw; dx++ {
+			srcX := sb.Min.X + clamp(int(float64(dx)/s), 0, sb.Dx()-1)
+			srcY := sb.Min.Y + clamp(int(float64(dy)/s), 0, sb.Dy()-1)
+			luma[dy*dw+dx] = imageLuma(img, srcX, srcY)
+		}
+	}
+	floydSteinberg(c, offX, offY, dw, dh, luma)
+}
+
+// DrawImageScaledFill renders img filling r entirely with a blurred background and a
+// centered, aspect-ratio-preserved overlay — both dithered to 1-bit.
+//
+// Technique (from InkyPi pad_image_blur):
+//  1. Zoom-crop the image to fill r (background), then box-blur it (radius 6).
+//  2. Render the image contained within r (letterboxed) as the sharp overlay.
+//
+// Useful for photos or screenshots where the source aspect ratio differs from r.
+func (c *Canvas) DrawImageScaledFill(r image.Rectangle, img image.Image) {
+	sb := img.Bounds()
+	if sb.Empty() || r.Empty() {
+		return
+	}
+	rw, rh := r.Dx(), r.Dy()
+
+	// 1. Zoom-fill: scale so the image covers r entirely, then center-crop.
+	fillScale := max(float64(rw)/float64(sb.Dx()), float64(rh)/float64(sb.Dy()))
+	cropOffX := int((float64(sb.Dx())*fillScale - float64(rw)) / 2)
+	cropOffY := int((float64(sb.Dy())*fillScale - float64(rh)) / 2)
+
+	bgLuma := make([]float32, rw*rh)
+	for dy := 0; dy < rh; dy++ {
+		for dx := 0; dx < rw; dx++ {
+			srcX := sb.Min.X + clamp(int(float64(dx+cropOffX)/fillScale), 0, sb.Dx()-1)
+			srcY := sb.Min.Y + clamp(int(float64(dy+cropOffY)/fillScale), 0, sb.Dy()-1)
+			bgLuma[dy*rw+dx] = imageLuma(img, srcX, srcY)
+		}
+	}
+	floydSteinberg(c, r.Min.X, r.Min.Y, rw, rh, boxBlur(bgLuma, rw, rh, 6))
+
+	// 2. Contained overlay: aspect-ratio-preserved, centered over the blurred background.
+	s := min(float64(rw)/float64(sb.Dx()), float64(rh)/float64(sb.Dy()))
+	ow := int(float64(sb.Dx()) * s)
+	oh := int(float64(sb.Dy()) * s)
+	offX := r.Min.X + (rw-ow)/2
+	offY := r.Min.Y + (rh-oh)/2
+
+	ovLuma := make([]float32, ow*oh)
+	for dy := 0; dy < oh; dy++ {
+		for dx := 0; dx < ow; dx++ {
+			srcX := sb.Min.X + clamp(int(float64(dx)/s), 0, sb.Dx()-1)
+			srcY := sb.Min.Y + clamp(int(float64(dy)/s), 0, sb.Dy()-1)
+			ovLuma[dy*ow+dx] = imageLuma(img, srcX, srcY)
+		}
+	}
+	floydSteinberg(c, offX, offY, ow, oh, ovLuma)
 }
 
 func clamp(v, lo, hi int) int {
