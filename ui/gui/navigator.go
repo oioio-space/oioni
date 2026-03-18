@@ -110,7 +110,8 @@ func (nav *Navigator) FastRender() error {
 	return nav.rm.FastRefresh(nav.canvas, nav.stack[len(nav.stack)-1].Widgets)
 }
 
-// Push adds a scene to the stack and triggers a forced full refresh.
+// Push adds a scene to the stack and triggers a partial refresh.
+// (Full refresh is reserved for Pop back to root to limit black-flash frequency.)
 func (nav *Navigator) Push(s *Scene) error {
 	if len(nav.stack) > 0 {
 		top := nav.stack[len(nav.stack)-1]
@@ -122,7 +123,7 @@ func (nav *Navigator) Push(s *Scene) error {
 	if s.OnEnter != nil {
 		s.OnEnter()
 	}
-	return nav.rm.RenderWith(nav.canvas, s.Widgets, true)
+	return nav.rm.RenderWith(nav.canvas, s.Widgets, false)
 }
 
 // stopWidgets recursively calls Stop() on any widget implementing Stoppable,
@@ -154,6 +155,7 @@ func (nav *Navigator) teardownScene(s *Scene) {
 
 // Pop removes the top scene and restores the previous one.
 // If only one scene is on the stack, Pop is a noop.
+// Full refresh only when returning to root (depth 1) to avoid constant black flashes.
 func (nav *Navigator) Pop() error {
 	if len(nav.stack) <= 1 {
 		return nil
@@ -165,7 +167,8 @@ func (nav *Navigator) Pop() error {
 	if prev.OnEnter != nil {
 		prev.OnEnter()
 	}
-	return nav.rm.RenderWith(nav.canvas, prev.Widgets, true)
+	forced := len(nav.stack) == 1
+	return nav.rm.RenderWith(nav.canvas, prev.Widgets, forced)
 }
 
 // PopTo pops scenes until len(stack) == depth, calling OnLeave for each removed
@@ -186,7 +189,8 @@ func (nav *Navigator) PopTo(depth int) error {
 	if top.OnEnter != nil {
 		top.OnEnter()
 	}
-	return nav.rm.RenderWith(nav.canvas, top.Widgets, true)
+	forced := depth == 1
+	return nav.rm.RenderWith(nav.canvas, top.Widgets, forced)
 }
 
 // Render redraws the current scene's dirty widgets (partial or noop).
