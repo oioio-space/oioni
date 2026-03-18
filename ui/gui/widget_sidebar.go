@@ -71,8 +71,9 @@ func (s *ActionSidebar) Draw(c *canvas.Canvas) {
 	// Clear background
 	c.DrawRect(b, canvas.White, true)
 
-	// Left separator line
+	// 2px left separator — 1px lines can vanish during partial refresh.
 	c.DrawLine(b.Min.X, b.Min.Y, b.Min.X, b.Max.Y-1, canvas.Black)
+	c.DrawLine(b.Min.X+1, b.Min.Y, b.Min.X+1, b.Max.Y-1, canvas.Black)
 
 	if len(s.buttons) == 0 {
 		return
@@ -83,9 +84,10 @@ func (s *ActionSidebar) Draw(c *canvas.Canvas) {
 		cellY := b.Min.Y + i*cellH
 		cellRect := image.Rect(b.Min.X+1, cellY, b.Max.X, cellY+cellH)
 
-		// Separator between buttons (not before first)
+		// 2px separator between buttons (not before first).
 		if i > 0 {
-			c.DrawLine(b.Min.X+1, cellY, b.Max.X-1, cellY, canvas.Black)
+			c.DrawLine(b.Min.X+2, cellY, b.Max.X-1, cellY, canvas.Black)
+			c.DrawLine(b.Min.X+2, cellY+1, b.Max.X-1, cellY+1, canvas.Black)
 		}
 
 		// Icon centered in cell

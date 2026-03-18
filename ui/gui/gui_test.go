@@ -353,8 +353,8 @@ func TestSpacerPreferredSizeZero(t *testing.T) {
 
 func TestDividerPreferredHeight(t *testing.T) {
 	d := NewDivider()
-	if d.PreferredSize().Y != 1 {
-		t.Errorf("Divider PreferredSize.Y = %d, want 1", d.PreferredSize().Y)
+	if d.PreferredSize().Y != 2 {
+		t.Errorf("Divider PreferredSize.Y = %d, want 2", d.PreferredSize().Y)
 	}
 }
 

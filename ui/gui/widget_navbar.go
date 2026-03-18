@@ -28,17 +28,18 @@ func (nb *NavBar) SetPath(path ...string) {
 	nb.SetDirty()
 }
 
-func (nb *NavBar) PreferredSize() image.Point { return image.Pt(206, 16) }
-func (nb *NavBar) MinSize() image.Point       { return image.Pt(60, 16) }
+func (nb *NavBar) PreferredSize() image.Point { return image.Pt(206, 18) }
+func (nb *NavBar) MinSize() image.Point       { return image.Pt(60, 18) }
 
-// Draw renders the breadcrumb text and a separator line at the bottom.
+// Draw renders the breadcrumb text and a 2px separator line at the bottom.
+// Uses font 12 (minimum readable size for e-ink per Mudita/industry guidelines).
 func (nb *NavBar) Draw(c *canvas.Canvas) {
 	b := nb.Bounds()
 	if b.Empty() {
 		return
 	}
 	c.DrawRect(b, canvas.White, true)
-	f := canvas.EmbeddedFont(8)
+	f := canvas.EmbeddedFont(12)
 	text := strings.Join(nb.path, " > ")
 	maxW := b.Dx() - 4
 	if f != nil && textWidth(text, f) > maxW {
@@ -53,8 +54,9 @@ func (nb *NavBar) Draw(c *canvas.Canvas) {
 		}
 	}
 	if f != nil {
-		c.DrawText(b.Min.X+2, b.Min.Y+2, text, f, canvas.Black)
+		c.DrawText(b.Min.X+2, b.Min.Y+3, text, f, canvas.Black)
 	}
-	// Separator line at bottom
+	// 2px separator at bottom — 1px lines can disappear during partial refresh.
+	c.DrawLine(b.Min.X, b.Max.Y-2, b.Max.X-1, b.Max.Y-2, canvas.Black)
 	c.DrawLine(b.Min.X, b.Max.Y-1, b.Max.X-1, b.Max.Y-1, canvas.Black)
 }

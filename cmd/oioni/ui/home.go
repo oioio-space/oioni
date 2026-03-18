@@ -26,8 +26,8 @@ func NewHomeScene(nav *gui.Navigator, status *gui.StatusBar) *gui.Scene {
 	)
 
 	content := gui.NewVBox(
-		gui.FixedSize(navbar, 16),
-		gui.FixedSize(carousel, 88),
+		gui.FixedSize(navbar, 18),  // font 12 needs 18px (2px separator + 12px text + 4px pad)
+		gui.FixedSize(carousel, 86), // 18+86+18=122 = epd.Width
 		gui.FixedSize(status, 18),
 	)
 	root := gui.NewHBox(gui.Expand(content), gui.FixedSize(sidebar, 44))

@@ -266,7 +266,8 @@ func (s *Spacer) Draw(_ *canvas.Canvas) {}
 
 // ── Divider ───────────────────────────────────────────────────────────────────
 
-// Divider draws a 1 px black line — horizontal in VBox, vertical in HBox.
+// Divider draws a 2px black line — horizontal in VBox, vertical in HBox.
+// 2px thickness prevents the line from disappearing during partial refresh.
 type Divider struct{ BaseWidget }
 
 func NewDivider() *Divider {
@@ -275,14 +276,18 @@ func NewDivider() *Divider {
 	return d
 }
 
-func (d *Divider) PreferredSize() image.Point { return image.Pt(0, 1) }
-func (d *Divider) MinSize() image.Point       { return image.Pt(0, 1) }
+func (d *Divider) PreferredSize() image.Point { return image.Pt(0, 2) }
+func (d *Divider) MinSize() image.Point       { return image.Pt(0, 2) }
 
 func (d *Divider) Draw(c *canvas.Canvas) {
 	r := d.Bounds()
 	if r.Dy() >= r.Dx() {
-		c.DrawLine(r.Min.X, r.Min.Y, r.Min.X, r.Max.Y, canvas.Black) // vertical
+		// vertical
+		c.DrawLine(r.Min.X, r.Min.Y, r.Min.X, r.Max.Y, canvas.Black)
+		c.DrawLine(r.Min.X+1, r.Min.Y, r.Min.X+1, r.Max.Y, canvas.Black)
 	} else {
-		c.DrawLine(r.Min.X, r.Min.Y, r.Max.X, r.Min.Y, canvas.Black) // horizontal
+		// horizontal
+		c.DrawLine(r.Min.X, r.Min.Y, r.Max.X, r.Min.Y, canvas.Black)
+		c.DrawLine(r.Min.X, r.Min.Y+1, r.Max.X, r.Min.Y+1, canvas.Black)
 	}
 }

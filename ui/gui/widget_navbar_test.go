@@ -12,8 +12,8 @@ func TestNavBar_PreferredSize(t *testing.T) {
 	if ps.X != 206 {
 		t.Errorf("NavBar width = %d, want 206", ps.X)
 	}
-	if ps.Y != 16 {
-		t.Errorf("NavBar height = %d, want 16", ps.Y)
+	if ps.Y != 18 {
+		t.Errorf("NavBar height = %d, want 18", ps.Y)
 	}
 }
 
@@ -23,8 +23,8 @@ func TestNavBar_MinSize(t *testing.T) {
 	if ms.X != 60 {
 		t.Errorf("NavBar min width = %d, want 60", ms.X)
 	}
-	if ms.Y != 16 {
-		t.Errorf("NavBar min height = %d, want 16", ms.Y)
+	if ms.Y != 18 {
+		t.Errorf("NavBar min height = %d, want 18", ms.Y)
 	}
 }
 
@@ -48,13 +48,13 @@ func TestNavBar_Path_Updated(t *testing.T) {
 func TestNavBar_Draw_NoPanic(t *testing.T) {
 	c := newTestCanvas()
 	nb := NewNavBar("Home", "Config")
-	nb.SetBounds(image.Rect(0, 0, 206, 16))
+	nb.SetBounds(image.Rect(0, 0, 206, 18))
 	nb.Draw(c)
 }
 
 func TestNavBar_Breadcrumb_LongPath_NoPanic(t *testing.T) {
 	nb := NewNavBar("Home", strings.Repeat("X", 200))
-	nb.SetBounds(image.Rect(0, 0, 206, 16))
+	nb.SetBounds(image.Rect(0, 0, 206, 18))
 	c := newTestCanvas()
 	nb.Draw(c) // must not panic on very long path
 }

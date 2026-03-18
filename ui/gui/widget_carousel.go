@@ -102,7 +102,9 @@ func (c *IconCarousel) HandleTouch(pt touch.TouchPoint) bool {
 	}
 	delay := c.tapDelay
 	if delay <= 0 {
-		delay = 100 * time.Millisecond
+		// 500ms: partial refresh (~300ms) shows pressed state, then navigation begins.
+		// Gives the user visible confirmation before the 2s full-refresh scene transition.
+		delay = 500 * time.Millisecond
 	}
 	item := c.items[buttonIdx]
 	c.pressed.Store(int32(buttonIdx))
@@ -148,8 +150,9 @@ func (c *IconCarousel) Draw(cv *canvas.Canvas) {
 		DrawRoundedRect(cv, btnRect, 4, true, bg)
 		DrawRoundedRect(cv, btnRect, 4, false, fg)
 
-		// Icon: centered in top portion of button
-		iconSize := 32
+		// Icon: centered in top portion of button.
+		// 24px in 38px button = 7px horizontal margin each side (better than 32px/3px).
+		iconSize := 24
 		iconX := btnRect.Min.X + (carouselButtonSize-iconSize)/2
 		iconY := btnRect.Min.Y + (buttonH-iconSize)/2 - 6 // shift up to leave room for label
 		iconRect := image.Rect(iconX, iconY, iconX+iconSize, iconY+iconSize)
@@ -186,11 +189,11 @@ func (c *IconCarousel) Draw(cv *canvas.Canvas) {
 		}
 	}
 
-	// Scroll arrows
+	// Scroll arrows (ASCII < > — non-ASCII chars may not render in bitmap font).
 	if c.index > 0 && f8 != nil {
-		cv.DrawText(b.Min.X, b.Min.Y+(b.Dy()-carouselPagHeight)/2-4, "‹", f8, canvas.Black)
+		cv.DrawText(b.Min.X, b.Min.Y+(b.Dy()-carouselPagHeight)/2-4, "<", f8, canvas.Black)
 	}
 	if c.index < len(c.items)-1 && f8 != nil {
-		cv.DrawText(b.Max.X-8, b.Min.Y+(b.Dy()-carouselPagHeight)/2-4, "›", f8, canvas.Black)
+		cv.DrawText(b.Max.X-8, b.Min.Y+(b.Dy()-carouselPagHeight)/2-4, ">", f8, canvas.Black)
 	}
 }

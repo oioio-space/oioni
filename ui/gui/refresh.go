@@ -8,7 +8,10 @@ import (
 	"github.com/oioio-space/oioni/drivers/epd"
 )
 
-const defaultAntiGhostN = 50 // full refresh every N partial updates
+// defaultAntiGhostN is set to 5 per Waveshare 2.13" V4 hardware recommendation:
+// after 5 partial updates the pixel charges become unbalanced and ghosting is visible.
+// Full refresh resets the reference frame and restores contrast.
+const defaultAntiGhostN = 5 // full refresh every N partial updates
 
 // refreshManager tracks dirty state and decides refresh strategy.
 type refreshManager struct {
