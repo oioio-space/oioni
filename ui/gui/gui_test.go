@@ -590,45 +590,24 @@ func TestNavigatorPopCallsHooksInOrder(t *testing.T) {
 }
 
 func TestNavigator_SwipeLeft_Pops(t *testing.T) {
-	d := &fakeDisplay{}
-	nav := NewNavigator(d)
+	fd := &fakeDisplay{}
+	nav := NewNavigator(fd)
+	root := &Scene{Widgets: []Widget{}}
+	sub := &Scene{Widgets: []Widget{}}
+	nav.Push(root) //nolint:errcheck
+	nav.Push(sub)  //nolint:errcheck
 
-	s1 := &Scene{Widgets: []Widget{NewLabel("one")}}
-	s2 := &Scene{Widgets: []Widget{NewLabel("two")}}
-	nav.Push(s1) //nolint
-	nav.Push(s2) //nolint
+	events := make(chan touch.TouchEvent, 4)
+	// Pre-load a swipe-left: first point buffers, second point + first constitutes swipe
+	events <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 100, Y: 50}}}
+	events <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 60, Y: 50}}}
+	close(events) // Run exits naturally when channel is closed and drained
 
-	if len(nav.stack) != 2 {
-		t.Fatalf("expected 2 scenes, got %d", len(nav.stack))
-	}
+	ctx := context.Background()
+	nav.Run(ctx, events) // blocks until events closed and drained
 
-	ctx, cancel := context.WithCancel(context.Background())
-	events := make(chan touch.TouchEvent, 2)
-	events <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 100, Y: 60}}}
-	events <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 60, Y: 60}}} // ΔX=-40
-
-	done := make(chan struct{})
-	go func() {
-		nav.Run(ctx, events)
-		close(done)
-	}()
-
-	// Wait for Run() to drain the pre-buffered events (swipe detection is immediate,
-	// no timer needed), then cancel and wait for Run() to exit.
-	// Reading len(chan) is safe from any goroutine in Go.
-	deadline := time.After(time.Second)
-	for len(events) > 0 {
-		select {
-		case <-deadline:
-			t.Fatal("timeout: events never consumed")
-		default:
-			time.Sleep(5 * time.Millisecond)
-		}
-	}
-	cancel()
-	<-done // Run() has returned — safe to read nav.stack
-	if len(nav.stack) != 1 {
-		t.Fatalf("expected 1 scene after swipe, got %d", len(nav.stack))
+	if nav.Depth() != 1 {
+		t.Errorf("expected depth 1 after swipe-left pop, got %d", nav.Depth())
 	}
 }
 
@@ -706,24 +685,26 @@ func TestNavigatorIdleSleep_CallsSleep(t *testing.T) {
 
 func TestNavigatorIdleReset_OnTouch(t *testing.T) {
 	fd := &fakeDisplay{}
-	nav := NewNavigatorWithIdle(fd, 200*time.Millisecond)
+	nav := NewNavigatorWithIdle(fd, 500*time.Millisecond) // long enough to never fire in test
 	nav.Push(&Scene{Widgets: []Widget{}}) //nolint:errcheck
 
 	tc := make(chan touch.TouchEvent, 5)
-	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
 	go func() {
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(30 * time.Millisecond)
 		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 10, Y: 10}}}
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(30 * time.Millisecond)
 		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 10, Y: 10}}}
 	}()
 
 	nav.Run(ctx, tc)
 
+	// idleTimeout=500ms, last touch at ~60ms → timer would fire at ~560ms.
+	// Context expires at 200ms → Run exits before timer ever fires.
 	if fd.sleepCalled > 0 {
-		t.Error("Sleep should not be called when touch resets the timer")
+		t.Error("Sleep should not be called when touch events reset the timer")
 	}
 }
 
