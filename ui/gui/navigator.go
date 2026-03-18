@@ -446,8 +446,13 @@ func (nav *Navigator) Run(ctx context.Context, events <-chan touch.TouchEvent) {
 						}
 					}
 				} else {
+					depthBefore := len(nav.stack)
 					nav.handleTouch(firstPt)
-					nav.handleTouch(pt)
+					// Only route second point if the scene hasn't changed (e.g. Pop/Push
+					// called synchronously by the first touch's OnTap handler).
+					if len(nav.stack) == depthBefore {
+						nav.handleTouch(pt)
+					}
 				}
 			}
 			nav.Render() //nolint:errcheck
