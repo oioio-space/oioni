@@ -207,6 +207,16 @@ func NewStatusBar(left, right string) *StatusBar {
 func (s *StatusBar) SetLeft(text string)  { s.left = text; s.SetDirty() }
 func (s *StatusBar) SetRight(text string) { s.right = text; s.SetDirty() }
 
+// SetLine updates line i (0=left, 1=right). Out-of-range i is a no-op.
+func (s *StatusBar) SetLine(i int, text string) {
+	switch i {
+	case 0:
+		s.SetLeft(text)
+	case 1:
+		s.SetRight(text)
+	}
+}
+
 func (s *StatusBar) PreferredSize() image.Point { return image.Pt(0, 18) }
 func (s *StatusBar) MinSize() image.Point       { return image.Pt(0, 18) }
 
