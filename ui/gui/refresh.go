@@ -2,6 +2,7 @@
 package gui
 
 import (
+	"bytes"
 	"slices"
 
 	"github.com/oioio-space/oioni/ui/canvas"
@@ -21,10 +22,11 @@ const maxFastBeforeBase = 3
 // refreshManager tracks dirty state and decides refresh strategy.
 type refreshManager struct {
 	display    Display
-	antiGhostN int // full refresh every N partial updates
-	counter    int // partial updates since last full refresh
-	fastCount  int // consecutive fast refreshes since last full refresh
+	antiGhostN int    // full refresh every N partial updates
+	counter    int    // partial updates since last full refresh
+	fastCount  int    // consecutive fast refreshes since last full refresh
 	hasBase    bool
+	prevBuf    []byte // last buffer sent to the display (nil until first render)
 }
 
 func newRefreshManager(d Display) *refreshManager {
@@ -59,9 +61,11 @@ func (rm *refreshManager) fullRefresh(c *canvas.Canvas, widgets []Widget) error 
 		return err
 	}
 	drawAll(c, widgets)
-	if err := rm.display.DisplayBase(c.Bytes()); err != nil {
+	buf := c.Bytes()
+	if err := rm.display.DisplayBase(buf); err != nil {
 		return err
 	}
+	rm.prevBuf = buf
 	markAllClean(widgets)
 	rm.counter = 0
 	rm.fastCount = 0
@@ -81,9 +85,15 @@ func (rm *refreshManager) FastRefresh(c *canvas.Canvas, widgets []Widget) error 
 		return rm.fullRefresh(c, widgets)
 	}
 	drawAll(c, widgets)
-	if err := rm.display.DisplayFast(c.Bytes()); err != nil {
+	buf := c.Bytes()
+	if bytes.Equal(buf, rm.prevBuf) {
+		markAllClean(widgets)
+		return nil
+	}
+	if err := rm.display.DisplayFast(buf); err != nil {
 		return err
 	}
+	rm.prevBuf = buf
 	markAllClean(widgets)
 	rm.fastCount++
 	return nil
@@ -99,9 +109,16 @@ func (rm *refreshManager) partialRefresh(c *canvas.Canvas, widgets []Widget) err
 			w.Draw(c)
 		}
 	}
-	if err := rm.display.DisplayPartial(c.Bytes()); err != nil {
+	buf := c.Bytes()
+	// Skip SPI transfer if framebuffer is identical to what's currently on screen.
+	if bytes.Equal(buf, rm.prevBuf) {
+		markAllClean(widgets)
+		return nil
+	}
+	if err := rm.display.DisplayPartial(buf); err != nil {
 		return err
 	}
+	rm.prevBuf = buf
 	markAllClean(widgets)
 	rm.counter++
 	return nil

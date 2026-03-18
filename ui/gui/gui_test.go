@@ -423,12 +423,13 @@ func TestRefreshManagerPartialOnDirtyWidget(t *testing.T) {
 	d := &fakeDisplay{}
 	rm := newRefreshManager(d)
 	c := canvas.New(epd.Width, epd.Height, canvas.Rot90)
-	w := NewLabel("test")
+	w := NewLabel("before")
 	w.SetBounds(image.Rect(0, 0, 100, 20))
 	// Establish base first
 	rm.RenderWith(c, []Widget{w}, true)
 	d.partialCalled = 0
-	// Dirty widget → partial update
+	// Change content so buffer differs from prevBuf → partial update expected.
+	w.SetText("after")
 	w.SetDirty()
 	if err := rm.Render(c, []Widget{w}); err != nil {
 		t.Fatalf("Render partial: %v", err)
@@ -453,18 +454,46 @@ func TestRefreshManagerFullOnForced(t *testing.T) {
 	}
 }
 
+func TestRefreshManagerSkipsPartialWhenBufferUnchanged(t *testing.T) {
+	d := &fakeDisplay{}
+	rm := newRefreshManager(d)
+	c := canvas.New(epd.Width, epd.Height, canvas.Rot90)
+	w := NewLabel("hello")
+	w.SetBounds(image.Rect(0, 0, 100, 20))
+	rm.RenderWith(c, []Widget{w}, true) // establishes base + prevBuf
+
+	// Re-render identical content: buffer unchanged → no SPI call.
+	beforePartial := d.partialCalled
+	w.SetDirty()
+	rm.Render(c, []Widget{w})
+	if d.partialCalled != beforePartial {
+		t.Errorf("partial called %d times on unchanged buffer, want 0", d.partialCalled-beforePartial)
+	}
+
+	// Change content: buffer differs → SPI call expected.
+	w.SetText("world")
+	w.SetDirty()
+	rm.Render(c, []Widget{w})
+	if d.partialCalled != beforePartial+1 {
+		t.Errorf("partial called %d times after buffer change, want 1", d.partialCalled-beforePartial)
+	}
+}
+
 func TestRefreshManagerAntiGhostCounter(t *testing.T) {
 	d := &fakeDisplay{}
 	rm := newRefreshManager(d)
 	rm.antiGhostN = 3 // low threshold for test
 	c := canvas.New(epd.Width, epd.Height, canvas.Rot90)
-	w := NewLabel("test")
+	w := NewLabel("a")
 	w.SetBounds(image.Rect(0, 0, 100, 20))
 	// First forced to establish base
 	rm.RenderWith(c, []Widget{w}, true)
 	initBefore := d.initCalled
-	// Run N partial updates — on the Nth, a full refresh must occur
-	for i := 0; i <= rm.antiGhostN; i++ {
+	// Run N+1 partial updates with changing content — buffer differs each time,
+	// so the diff does not suppress the SPI call and the anti-ghost counter advances.
+	texts := []string{"b", "c", "d", "e"}
+	for _, text := range texts {
+		w.SetText(text)
 		w.SetDirty()
 		rm.Render(c, []Widget{w})
 	}

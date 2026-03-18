@@ -139,16 +139,20 @@ func (c *IconCarousel) Draw(cv *canvas.Canvas) {
 			btnRect.Max.X = b.Max.X
 		}
 
-		inverted := c.pressed.Load() == int32(i)
-		bg := canvas.White
-		fg := canvas.Black
-		if inverted {
-			bg, fg = canvas.Black, canvas.White
-		}
+		pressed := c.pressed.Load() == int32(i)
 
-		// Background fill + border
-		DrawRoundedRect(cv, btnRect, 4, true, bg)
-		DrawRoundedRect(cv, btnRect, 4, false, fg)
+		// Borders-over-fills: always white fill, vary border thickness for press feedback.
+		// A fill inversion changes ~2600 pixels; a double-border changes ~430 — 83% fewer
+		// pixels actionned → less ghosting accumulation, faster partial refresh.
+		DrawRoundedRect(cv, btnRect, 4, true, canvas.White)  // fill
+		DrawRoundedRect(cv, btnRect, 4, false, canvas.Black) // outer border (1px)
+		if pressed {
+			// 2px inner inset border signals pressed state without inverting fill.
+			inner := image.Rect(btnRect.Min.X+2, btnRect.Min.Y+2, btnRect.Max.X-2, btnRect.Max.Y-2)
+			if !inner.Empty() {
+				DrawRoundedRect(cv, inner, 2, false, canvas.Black)
+			}
+		}
 
 		// Icon: centered in top portion of button.
 		// 24px in 38px button = 7px horizontal margin each side (better than 32px/3px).
@@ -160,13 +164,13 @@ func (c *IconCarousel) Draw(cv *canvas.Canvas) {
 			c.items[i].Icon.Draw(cv, iconRect)
 		}
 
-		// Label: centered below icon
+		// Label: centered below icon (always black on white)
 		if f8 != nil && c.items[i].Label != "" {
 			lw := textWidth(c.items[i].Label, f8)
 			lx := btnRect.Min.X + (btnRect.Dx()-lw)/2
 			ly := btnRect.Max.Y - f8.LineHeight() - 2
 			if lx < b.Max.X {
-				cv.DrawText(lx, ly, c.items[i].Label, f8, fg)
+				cv.DrawText(lx, ly, c.items[i].Label, f8, canvas.Black)
 			}
 		}
 
