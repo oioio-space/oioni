@@ -9,8 +9,22 @@ import (
 func TestNavBar_PreferredSize(t *testing.T) {
 	nb := NewNavBar("Home")
 	ps := nb.PreferredSize()
+	if ps.X != 206 {
+		t.Errorf("NavBar width = %d, want 206", ps.X)
+	}
 	if ps.Y != 16 {
 		t.Errorf("NavBar height = %d, want 16", ps.Y)
+	}
+}
+
+func TestNavBar_MinSize(t *testing.T) {
+	nb := NewNavBar("Home")
+	ms := nb.MinSize()
+	if ms.X != 60 {
+		t.Errorf("NavBar min width = %d, want 60", ms.X)
+	}
+	if ms.Y != 16 {
+		t.Errorf("NavBar min height = %d, want 16", ms.Y)
 	}
 }
 
