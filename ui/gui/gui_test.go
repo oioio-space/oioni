@@ -389,20 +389,22 @@ func TestButtonPressedStateCycle(t *testing.T) {
 
 // fakeDisplay implements the Display interface for tests — no hardware needed.
 type fakeDisplay struct {
-	initCalled    int
-	baseCalled    int
-	partialCalled int
-	fastCalled    int
-	sleepCalled   int
-	lastMode      epd.Mode
+	initCalled       int
+	baseCalled       int
+	partialCalled    int
+	fastCalled       int
+	regenerateCalled int
+	sleepCalled      int
+	lastMode         epd.Mode
 }
 
-func (f *fakeDisplay) Init(m epd.Mode) error         { f.initCalled++; f.lastMode = m; return nil }
-func (f *fakeDisplay) DisplayBase(b []byte) error    { f.baseCalled++; return nil }
-func (f *fakeDisplay) DisplayPartial(b []byte) error { f.partialCalled++; return nil }
-func (f *fakeDisplay) DisplayFast(b []byte) error    { f.fastCalled++; return nil }
-func (f *fakeDisplay) Sleep() error                  { f.sleepCalled++; return nil }
-func (f *fakeDisplay) Close() error                  { return nil }
+func (f *fakeDisplay) Init(m epd.Mode) error          { f.initCalled++; f.lastMode = m; return nil }
+func (f *fakeDisplay) DisplayBase(b []byte) error     { f.baseCalled++; return nil }
+func (f *fakeDisplay) DisplayPartial(b []byte) error  { f.partialCalled++; return nil }
+func (f *fakeDisplay) DisplayFast(b []byte) error     { f.fastCalled++; return nil }
+func (f *fakeDisplay) DisplayRegenerate() error       { f.regenerateCalled++; return nil }
+func (f *fakeDisplay) Sleep() error                   { f.sleepCalled++; return nil }
+func (f *fakeDisplay) Close() error                   { return nil }
 
 func TestRefreshManagerNoop(t *testing.T) {
 	d := &fakeDisplay{}

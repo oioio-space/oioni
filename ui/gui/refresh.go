@@ -13,11 +13,17 @@ import (
 // Full refresh resets the reference frame and restores contrast.
 const defaultAntiGhostN = 5 // full refresh every N partial updates
 
+// maxFastBeforeBase is the maximum consecutive DisplayFast() calls before forcing a
+// DisplayBase() to re-sync the 0x26 reference frame. DisplayFast only writes 0x24;
+// without periodic base sync, subsequent partial updates see a stale reference.
+const maxFastBeforeBase = 3
+
 // refreshManager tracks dirty state and decides refresh strategy.
 type refreshManager struct {
 	display    Display
 	antiGhostN int // full refresh every N partial updates
 	counter    int // partial updates since last full refresh
+	fastCount  int // consecutive fast refreshes since last full refresh
 	hasBase    bool
 }
 
@@ -58,7 +64,28 @@ func (rm *refreshManager) fullRefresh(c *canvas.Canvas, widgets []Widget) error 
 	}
 	markAllClean(widgets)
 	rm.counter = 0
+	rm.fastCount = 0
 	rm.hasBase = true
+	return nil
+}
+
+// FastRefresh renders dirty widgets using DisplayFast.
+// After maxFastBeforeBase consecutive calls, automatically falls back to fullRefresh
+// to re-sync the 0x26 reference frame (DisplayFast only writes 0x24).
+func (rm *refreshManager) FastRefresh(c *canvas.Canvas, widgets []Widget) error {
+	if !slices.ContainsFunc(widgets, func(w Widget) bool { return w.IsDirty() }) {
+		return nil
+	}
+	if rm.fastCount >= maxFastBeforeBase {
+		rm.fastCount = 0
+		return rm.fullRefresh(c, widgets)
+	}
+	drawAll(c, widgets)
+	if err := rm.display.DisplayFast(c.Bytes()); err != nil {
+		return err
+	}
+	markAllClean(widgets)
+	rm.fastCount++
 	return nil
 }
 

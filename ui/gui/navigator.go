@@ -44,9 +44,10 @@ type Navigator struct {
 	stack       []*Scene
 	mu          sync.Mutex
 	lastFire    map[Widget]time.Time
-	renderCh    chan struct{}  // buffered(1): non-blocking RequestRender
-	wakeCh      chan struct{}  // buffered(1): non-blocking Wake()
-	idleTimeout time.Duration // 0 = no idle sleep
+	renderCh     chan struct{}  // buffered(1): non-blocking RequestRender
+	wakeCh       chan struct{}  // buffered(1): non-blocking Wake()
+	regenerateCh chan struct{}  // buffered(1): non-blocking RequestRegenerate (black→white purge)
+	idleTimeout  time.Duration // 0 = no idle sleep
 }
 
 // NewNavigator creates a Navigator. The Display must outlive the Navigator.
@@ -57,8 +58,9 @@ func NewNavigator(d Display) *Navigator {
 		rm:       newRefreshManager(d),
 		canvas:   c,
 		lastFire: make(map[Widget]time.Time),
-		renderCh: make(chan struct{}, 1),
-		wakeCh:   make(chan struct{}, 1),
+		renderCh:     make(chan struct{}, 1),
+		wakeCh:       make(chan struct{}, 1),
+		regenerateCh: make(chan struct{}, 1),
 	}
 }
 
@@ -87,6 +89,25 @@ func (nav *Navigator) Wake() {
 	case nav.wakeCh <- struct{}{}:
 	default:
 	}
+}
+
+// RequestRegenerate triggers a black→white purge cycle before re-rendering.
+// Non-blocking: if already queued, this is a no-op. Slower than Wake() (~4s).
+// Intended for 24h keep-alive calls to prevent display degradation.
+func (nav *Navigator) RequestRegenerate() {
+	select {
+	case nav.regenerateCh <- struct{}{}:
+	default:
+	}
+}
+
+// FastRender renders dirty widgets using DisplayFast with automatic base-sync tracking.
+// After maxFastBeforeBase consecutive calls, automatically falls back to full refresh.
+func (nav *Navigator) FastRender() error {
+	if len(nav.stack) == 0 {
+		return nil
+	}
+	return nav.rm.FastRefresh(nav.canvas, nav.stack[len(nav.stack)-1].Widgets)
 }
 
 // Push adds a scene to the stack and triggers a forced full refresh.
@@ -280,6 +301,15 @@ func (nav *Navigator) Run(ctx context.Context, events <-chan touch.TouchEvent) {
 				_ = nav.display.Sleep()
 			}
 			idleTimerCh = nil // prevent re-firing until reset
+
+		case <-nav.regenerateCh:
+			// Black→white purge cycle, then full re-render. Used by 24h keep-alive.
+			sleeping = false
+			_ = nav.display.DisplayRegenerate()
+			if len(nav.stack) > 0 {
+				_ = nav.rm.RenderWith(nav.canvas, nav.stack[len(nav.stack)-1].Widgets, true)
+			}
+			resetIdle()
 
 		case <-nav.wakeCh:
 			if sleeping {

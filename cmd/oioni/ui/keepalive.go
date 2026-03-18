@@ -17,7 +17,9 @@ import (
 
 const keepAliveInterval = 24 * time.Hour
 
-// StartKeepAlive starts a background goroutine that calls nav.Wake() every 24 hours.
+// StartKeepAlive starts a background goroutine that calls nav.RequestRegenerate() every 24 hours.
+// This triggers a full black→white purge cycle to prevent permanent display damage
+// (Waveshare hardware requirement: refresh at least every 24h).
 // The goroutine stops when ctx is cancelled.
 func StartKeepAlive(ctx context.Context, nav *gui.Navigator) {
 	go func() {
@@ -28,7 +30,7 @@ func StartKeepAlive(ctx context.Context, nav *gui.Navigator) {
 			case <-ctx.Done():
 				return
 			case <-t.C:
-				nav.Wake()
+				nav.RequestRegenerate()
 			}
 		}
 	}()

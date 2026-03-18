@@ -18,7 +18,8 @@ type Display interface {
 	Init(m epd.Mode) error
 	DisplayBase(buf []byte) error    // full refresh: writes 0x24 + 0x26 RAM banks
 	DisplayPartial(buf []byte) error // partial refresh: full 4000-byte buffer, self-contained
-	DisplayFast(buf []byte) error    // fast full refresh
+	DisplayFast(buf []byte) error       // fast full refresh
+	DisplayRegenerate() error           // black→white purge cycle (~4s), for keep-alive wake
 	Sleep() error
 	Close() error
 }

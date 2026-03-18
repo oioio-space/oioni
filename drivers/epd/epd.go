@@ -259,6 +259,28 @@ func (d *Display) DisplayFast(buf []byte) error {
 	return d.firstErr
 }
 
+// DisplayRegenerate performs a full black→white cycle to purge deep e-ink ghosting.
+// Intended for use after extended sleep (e.g., 24h keep-alive).
+// Leaves the display blank (white); the caller must re-render the UI afterwards.
+// Takes ~4s (two full refresh cycles).
+func (d *Display) DisplayRegenerate() error {
+	black := make([]byte, BufferSize) // 0x00 = all black (0=noir, 1=blanc)
+	white := make([]byte, BufferSize)
+	for i := range white {
+		white[i] = 0xFF
+	}
+	if err := d.Init(ModeFull); err != nil {
+		return err
+	}
+	if err := d.DisplayBase(black); err != nil {
+		return err
+	}
+	if err := d.Init(ModeFull); err != nil {
+		return err
+	}
+	return d.DisplayBase(white)
+}
+
 func (d *Display) Sleep() error {
 	d.firstErr = nil
 	d.sendCommand(0x10)
