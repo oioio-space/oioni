@@ -3,6 +3,7 @@ package gui
 
 import (
 	"image"
+	"sync/atomic"
 	"time"
 
 	"github.com/oioio-space/oioni/drivers/touch"
@@ -33,16 +34,16 @@ type IconCarousel struct {
 	BaseWidget
 	items    []CarouselItem
 	index    int           // leftmost visible item index (snap position)
-	pressed  int           // index of pressed item (-1 = none)
+	pressed  atomic.Int32  // index of pressed item (-1 = none, ≥0 = pressed index)
 	tapDelay time.Duration // override for tests; 0 = default 100ms
 }
 
 // NewIconCarousel creates an IconCarousel with the given items.
 func NewIconCarousel(items []CarouselItem) *IconCarousel {
 	c := &IconCarousel{
-		items:   items,
-		pressed: -1,
+		items: items,
 	}
+	c.pressed.Store(-1)
 	c.SetDirty()
 	return c
 }
@@ -104,10 +105,10 @@ func (c *IconCarousel) HandleTouch(pt touch.TouchPoint) bool {
 		delay = 100 * time.Millisecond
 	}
 	item := c.items[buttonIdx]
-	c.pressed = buttonIdx
+	c.pressed.Store(int32(buttonIdx))
 	c.SetDirty()
 	time.AfterFunc(delay, func() {
-		c.pressed = -1
+		c.pressed.Store(-1)
 		c.SetDirty()
 		if item.OnTap != nil {
 			item.OnTap()
@@ -122,6 +123,7 @@ func (c *IconCarousel) Draw(cv *canvas.Canvas) {
 	if b.Empty() {
 		return
 	}
+	cv.DrawRect(b, canvas.White, true)
 	f8 := canvas.EmbeddedFont(8)
 	buttonH := b.Dy() - carouselPagHeight
 
@@ -135,7 +137,7 @@ func (c *IconCarousel) Draw(cv *canvas.Canvas) {
 			btnRect.Max.X = b.Max.X
 		}
 
-		inverted := c.pressed == i
+		inverted := c.pressed.Load() == int32(i)
 		bg := canvas.White
 		fg := canvas.Black
 		if inverted {
@@ -151,7 +153,7 @@ func (c *IconCarousel) Draw(cv *canvas.Canvas) {
 		iconX := btnRect.Min.X + (carouselButtonSize-iconSize)/2
 		iconY := btnRect.Min.Y + (buttonH-iconSize)/2 - 6 // shift up to leave room for label
 		iconRect := image.Rect(iconX, iconY, iconX+iconSize, iconY+iconSize)
-		if !iconRect.Empty() && iconRect.In(b) {
+		if !iconRect.Intersect(b).Empty() {
 			c.items[i].Icon.Draw(cv, iconRect)
 		}
 
@@ -160,7 +162,7 @@ func (c *IconCarousel) Draw(cv *canvas.Canvas) {
 			lw := textWidth(c.items[i].Label, f8)
 			lx := btnRect.Min.X + (btnRect.Dx()-lw)/2
 			ly := btnRect.Max.Y - f8.LineHeight() - 2
-			if lx >= b.Min.X && lx < b.Max.X {
+			if lx < b.Max.X {
 				cv.DrawText(lx, ly, c.items[i].Label, f8, fg)
 			}
 		}
