@@ -118,6 +118,19 @@ func stopWidgets(widgets []Widget) {
 	}
 }
 
+// teardownScene calls OnLeave, stops all widgets, and prunes debounce state.
+func (nav *Navigator) teardownScene(s *Scene) {
+	if s.OnLeave != nil {
+		s.OnLeave()
+	}
+	stopWidgets(s.Widgets)
+	nav.mu.Lock()
+	for _, w := range s.Widgets {
+		delete(nav.lastFire, w)
+	}
+	nav.mu.Unlock()
+}
+
 // Pop removes the top scene and restores the previous one.
 // If only one scene is on the stack, Pop is a noop.
 func (nav *Navigator) Pop() error {
@@ -125,16 +138,7 @@ func (nav *Navigator) Pop() error {
 		return nil
 	}
 	top := nav.stack[len(nav.stack)-1]
-	if top.OnLeave != nil {
-		top.OnLeave()
-	}
-	stopWidgets(top.Widgets)
-	// Prune debounce state for widgets in the popped scene.
-	nav.mu.Lock()
-	for _, w := range top.Widgets {
-		delete(nav.lastFire, w)
-	}
-	nav.mu.Unlock()
+	nav.teardownScene(top)
 	nav.stack = nav.stack[:len(nav.stack)-1]
 	prev := nav.stack[len(nav.stack)-1]
 	if prev.OnEnter != nil {
@@ -153,18 +157,8 @@ func (nav *Navigator) PopTo(depth int) error {
 	if len(nav.stack) <= depth {
 		return nil
 	}
-	// Call OnLeave top-first for all scenes being removed.
 	for i := len(nav.stack) - 1; i >= depth; i-- {
-		s := nav.stack[i]
-		if s.OnLeave != nil {
-			s.OnLeave()
-		}
-		stopWidgets(s.Widgets)
-		nav.mu.Lock()
-		for _, w := range s.Widgets {
-			delete(nav.lastFire, w)
-		}
-		nav.mu.Unlock()
+		nav.teardownScene(nav.stack[i])
 	}
 	nav.stack = nav.stack[:depth]
 	top := nav.stack[depth-1]
@@ -334,8 +328,10 @@ func (nav *Navigator) Run(ctx context.Context, events <-chan touch.TouchEvent) {
 				swipeTimer = nil
 				firstPt := *swipePt
 				swipePt = nil
-				dx := int(pt.X) - int(firstPt.X)
-				dy := int(pt.Y) - int(firstPt.Y)
+				// Physical→logical: logX = pt.Y, logY = 121 - pt.X
+				// Horizontal (left/right) corresponds to physical Y; vertical to physical X.
+				dx := int(pt.Y) - int(firstPt.Y)
+				dy := int(pt.X) - int(firstPt.X)
 				adx, ady := dx, dy
 				if adx < 0 {
 					adx = -adx

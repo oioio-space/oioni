@@ -598,9 +598,9 @@ func TestNavigator_SwipeLeft_Pops(t *testing.T) {
 	nav.Push(sub)  //nolint:errcheck
 
 	events := make(chan touch.TouchEvent, 4)
-	// Pre-load a swipe-left: first point buffers, second point + first constitutes swipe
-	events <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 100, Y: 50}}}
-	events <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 60, Y: 50}}}
+	// Swipe left: physical Y decreases (logX = pt.Y → decreasing Y = moving left).
+	events <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 50, Y: 200}}}
+	events <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 50, Y: 150}}}
 	close(events) // Run exits naturally when channel is closed and drained
 
 	ctx := context.Background()
@@ -720,10 +720,10 @@ func TestNavigator_HScrollable_SwipeLeft(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		// First event buffers the touch point; second event classifies the swipe.
-		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 100, Y: 50}}}
+		// Swipe left: physical Y decreases (logX = pt.Y → decreasing Y = moving left).
+		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 50, Y: 200}}}
 		time.Sleep(50 * time.Millisecond)
-		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 60, Y: 50}}} // ΔX=-40
+		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 50, Y: 150}}} // ΔY=-50
 	}()
 	nav.Run(ctx, tc)
 
@@ -749,10 +749,10 @@ func TestNavigator_NoHScrollable_SwipeLeft_Pops(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		// First event buffers the touch point; second event classifies the swipe.
-		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 100, Y: 50}}}
+		// Swipe left: physical Y decreases (logX = pt.Y → decreasing Y = moving left).
+		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 50, Y: 200}}}
 		time.Sleep(50 * time.Millisecond)
-		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 60, Y: 50}}} // ΔX=-40
+		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 50, Y: 150}}} // ΔY=-50
 	}()
 	nav.Run(ctx, tc)
 

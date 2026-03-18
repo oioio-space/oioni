@@ -3,6 +3,7 @@ package gui
 
 import (
 	"image"
+	"sync"
 	"time"
 
 	"github.com/oioio-space/oioni/ui/canvas"
@@ -187,8 +188,10 @@ func (p *ProgressBar) Draw(c *canvas.Canvas) {
 // ── StatusBar ─────────────────────────────────────────────────────────────────
 
 // StatusBar renders a full-width black bar with white left and right text.
+// SetLeft/SetRight may be called from any goroutine.
 type StatusBar struct {
 	BaseWidget
+	mu    sync.Mutex
 	left  string
 	right string
 	font  canvas.Font
@@ -204,8 +207,19 @@ func NewStatusBar(left, right string) *StatusBar {
 	return s
 }
 
-func (s *StatusBar) SetLeft(text string)  { s.left = text; s.SetDirty() }
-func (s *StatusBar) SetRight(text string) { s.right = text; s.SetDirty() }
+func (s *StatusBar) SetLeft(text string) {
+	s.mu.Lock()
+	s.left = text
+	s.mu.Unlock()
+	s.SetDirty()
+}
+
+func (s *StatusBar) SetRight(text string) {
+	s.mu.Lock()
+	s.right = text
+	s.mu.Unlock()
+	s.SetDirty()
+}
 
 // SetLine updates line i (0=left, 1=right). Out-of-range i is a no-op.
 func (s *StatusBar) SetLine(i int, text string) {
@@ -227,14 +241,16 @@ func (s *StatusBar) Draw(c *canvas.Canvas) {
 		return
 	}
 	f := s.font
-	left := s.left
+	s.mu.Lock()
+	left, right := s.left, s.right
+	s.mu.Unlock()
 	if left == "" {
 		left = time.Now().Format("15:04")
 	}
 	c.DrawText(r.Min.X+2, r.Min.Y+3, left, f, canvas.White)
-	if s.right != "" {
-		rw := textWidth(s.right, f)
-		c.DrawText(r.Max.X-rw-2, r.Min.Y+3, s.right, f, canvas.White)
+	if right != "" {
+		rw := textWidth(right, f)
+		c.DrawText(r.Max.X-rw-2, r.Min.Y+3, right, f, canvas.White)
 	}
 }
 

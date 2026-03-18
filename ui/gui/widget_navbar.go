@@ -44,10 +44,12 @@ func (nb *NavBar) Draw(c *canvas.Canvas) {
 	if f != nil && textWidth(text, f) > maxW {
 		if len(nb.path) > 0 {
 			text = "… › " + nb.path[len(nb.path)-1]
-			// Further truncate if still too wide
-			for f != nil && len(text) > 5 && textWidth(text, f) > maxW {
-				text = text[1:]
+			// Further truncate if still too wide, using rune-safe slicing.
+			runes := []rune(text)
+			for f != nil && len(runes) > 5 && textWidth(string(runes), f) > maxW {
+				runes = runes[1:]
 			}
+			text = string(runes)
 		}
 	}
 	if f != nil {

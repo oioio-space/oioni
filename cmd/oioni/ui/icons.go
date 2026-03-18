@@ -4,6 +4,7 @@ package ui
 import (
 	"embed"
 	"image/png"
+	"log"
 
 	"github.com/oioio-space/oioni/ui/gui"
 )
@@ -30,12 +31,14 @@ func init() {
 func mustLoadIcon(name string) gui.Icon {
 	f, err := iconFS.Open("icons/" + name + ".png")
 	if err != nil {
-		panic("icon not found: " + name)
+		log.Printf("ui: icon not found: %s: %v", name, err)
+		return gui.Icon{}
 	}
 	defer f.Close()
 	img, err := png.Decode(f)
 	if err != nil {
-		panic("icon decode failed: " + name + ": " + err.Error())
+		log.Printf("ui: icon decode failed: %s: %v", name, err)
+		return gui.Icon{}
 	}
 	return gui.NewImageIcon(img)
 }
