@@ -22,9 +22,9 @@ func NewHomeScene(nav *gui.Navigator, status *gui.StatusBar) *gui.Scene {
 
 	navbar := gui.NewNavBar("Home")
 	sidebar := gui.NewActionSidebar(
-		gui.SidebarButton{Label: "<", OnTap: func() { carousel.ScrollH(+1) }},
+		gui.SidebarButton{Label: "<", Height: 44, OnTap: func() { carousel.ScrollH(+1) }},
 		gui.SidebarButton{Icon: Icons.Oni, OnTap: func() { /* already at home */ }},
-		gui.SidebarButton{Label: ">", OnTap: func() { carousel.ScrollH(-1) }},
+		gui.SidebarButton{Label: ">", Height: 44, OnTap: func() { carousel.ScrollH(-1) }},
 	)
 
 	content := gui.NewVBox(

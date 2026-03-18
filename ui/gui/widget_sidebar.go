@@ -10,10 +10,12 @@ import (
 
 // SidebarButton is one action button in the ActionSidebar.
 // If Icon is zero-value, Label is drawn centered instead.
+// Height sets a fixed pixel height; 0 means the button auto-sizes to share remaining space.
 type SidebarButton struct {
-	Icon  Icon
-	Label string
-	OnTap func()
+	Icon   Icon
+	Label  string
+	Height int // px; 0 = auto (equal share of remaining space)
+	OnTap  func()
 }
 
 // ActionSidebar displays a vertical column of icon buttons on the right side.
@@ -39,28 +41,54 @@ func (s *ActionSidebar) SetButtons(buttons ...SidebarButton) {
 func (s *ActionSidebar) PreferredSize() image.Point { return image.Pt(44, 122) }
 func (s *ActionSidebar) MinSize() image.Point       { return image.Pt(44, 40) }
 
+// cellHeights returns the pixel height for each button.
+// Fixed-height buttons (Height > 0) use their declared height; the remaining space is
+// divided equally among auto-height buttons (Height == 0).
+func (s *ActionSidebar) cellHeights(totalH int) []int {
+	heights := make([]int, len(s.buttons))
+	fixed, autoCount := 0, 0
+	for _, btn := range s.buttons {
+		if btn.Height > 0 {
+			fixed += btn.Height
+		} else {
+			autoCount++
+		}
+	}
+	autoH := 0
+	if autoCount > 0 {
+		autoH = (totalH - fixed) / autoCount
+		if autoH < 0 {
+			autoH = 0
+		}
+	}
+	for i, btn := range s.buttons {
+		if btn.Height > 0 {
+			heights[i] = btn.Height
+		} else {
+			heights[i] = autoH
+		}
+	}
+	return heights
+}
+
 // HandleTouch routes a tap to the button at the touch's Y position.
 func (s *ActionSidebar) HandleTouch(pt touch.TouchPoint) bool {
 	b := s.Bounds()
 	if b.Empty() || len(s.buttons) == 0 {
 		return false
 	}
-	y := int(pt.Y) - b.Min.Y
-	cellH := b.Dy() / len(s.buttons)
-	if cellH <= 0 {
-		return false
+	heights := s.cellHeights(b.Dy())
+	y := b.Min.Y
+	for i, btn := range s.buttons {
+		if int(pt.Y) >= y && int(pt.Y) < y+heights[i] {
+			if btn.OnTap != nil {
+				btn.OnTap()
+			}
+			return true
+		}
+		y += heights[i]
 	}
-	idx := y / cellH
-	if idx < 0 {
-		idx = 0
-	}
-	if idx >= len(s.buttons) {
-		idx = len(s.buttons) - 1
-	}
-	if s.buttons[idx].OnTap != nil {
-		s.buttons[idx].OnTap()
-	}
-	return true
+	return false
 }
 
 // Draw renders the sidebar: white background, left separator line, and equally distributed icon buttons.
@@ -81,10 +109,11 @@ func (s *ActionSidebar) Draw(c *canvas.Canvas) {
 		return
 	}
 
-	cellH := b.Dy() / len(s.buttons)
+	heights := s.cellHeights(b.Dy())
+	cellY := b.Min.Y
 	for i, btn := range s.buttons {
-		cellY := b.Min.Y + i*cellH
-		cellRect := image.Rect(b.Min.X+1, cellY, b.Max.X, cellY+cellH)
+		h := heights[i]
+		cellRect := image.Rect(b.Min.X+2, cellY, b.Max.X, cellY+h)
 
 		// 2px separator between buttons (not before first).
 		if i > 0 {
@@ -92,7 +121,7 @@ func (s *ActionSidebar) Draw(c *canvas.Canvas) {
 			c.DrawLine(b.Min.X+2, cellY+1, b.Max.X-1, cellY+1, canvas.Black)
 		}
 
-		if _, h := btn.Icon.Size(); h > 0 {
+		if _, ih := btn.Icon.Size(); ih > 0 {
 			// Icon centered in cell
 			iconSize := 24
 			iconX := cellRect.Min.X + (cellRect.Dx()-iconSize)/2
@@ -111,5 +140,6 @@ func (s *ActionSidebar) Draw(c *canvas.Canvas) {
 				c.DrawText(lx, ly, btn.Label, f, canvas.Black)
 			}
 		}
+		cellY += h
 	}
 }

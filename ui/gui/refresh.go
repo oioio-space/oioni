@@ -115,6 +115,10 @@ func (rm *refreshManager) partialRefresh(c *canvas.Canvas, widgets []Widget) err
 		markAllClean(widgets)
 		return nil
 	}
+	// Content-based full refresh: >60% bytes changed → ghosting risk too high for partial.
+	if rm.prevBuf != nil && countDiffBytes(buf, rm.prevBuf)*100 > len(buf)*60 {
+		return rm.fullRefresh(c, widgets)
+	}
 	if err := rm.display.DisplayPartial(buf); err != nil {
 		return err
 	}
@@ -122,6 +126,21 @@ func (rm *refreshManager) partialRefresh(c *canvas.Canvas, widgets []Widget) err
 	markAllClean(widgets)
 	rm.counter++
 	return nil
+}
+
+// countDiffBytes returns the number of byte positions that differ between a and b.
+func countDiffBytes(a, b []byte) int {
+	n := len(a)
+	if len(b) < n {
+		n = len(b)
+	}
+	diff := 0
+	for i := 0; i < n; i++ {
+		if a[i] != b[i] {
+			diff++
+		}
+	}
+	return diff
 }
 
 func drawAll(c *canvas.Canvas, widgets []Widget) {
