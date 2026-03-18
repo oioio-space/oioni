@@ -45,6 +45,7 @@ func newCategoryScene(nav *gui.Navigator, title string) *gui.Scene {
 
 	content := gui.NewVBox(
 		gui.FixedSize(navbar, 18),
+		gui.FixedSize(gui.NewSpacer(), 2), // 2px gap below navbar separator
 		gui.Expand(placeholder),
 	)
 	root := gui.NewHBox(gui.Expand(content), gui.FixedSize(sidebar, 44))

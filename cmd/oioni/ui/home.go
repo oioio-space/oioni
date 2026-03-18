@@ -22,12 +22,16 @@ func NewHomeScene(nav *gui.Navigator, status *gui.StatusBar) *gui.Scene {
 
 	navbar := gui.NewNavBar("Home")
 	sidebar := gui.NewActionSidebar(
+		gui.SidebarButton{Label: "<", OnTap: func() { carousel.ScrollH(+1) }},
 		gui.SidebarButton{Icon: Icons.Oni, OnTap: func() { /* already at home */ }},
+		gui.SidebarButton{Label: ">", OnTap: func() { carousel.ScrollH(-1) }},
 	)
 
 	content := gui.NewVBox(
-		gui.FixedSize(navbar, 18),  // font 12 needs 18px (2px separator + 12px text + 4px pad)
-		gui.FixedSize(carousel, 86), // 18+86+18=122 = epd.Width
+		gui.FixedSize(navbar, 18),           // 18px: 12pt text + 2px separator + padding
+		gui.FixedSize(gui.NewSpacer(), 2),   // 2px gap below separator
+		gui.FixedSize(carousel, 82),         // 18+2+82+2+18=122 = epd.Width
+		gui.FixedSize(gui.NewSpacer(), 2),   // 2px gap above status bar
 		gui.FixedSize(status, 18),
 	)
 	root := gui.NewHBox(gui.Expand(content), gui.FixedSize(sidebar, 44))

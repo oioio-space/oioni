@@ -9,8 +9,10 @@ import (
 )
 
 // SidebarButton is one action button in the ActionSidebar.
+// If Icon is zero-value, Label is drawn centered instead.
 type SidebarButton struct {
 	Icon  Icon
+	Label string
 	OnTap func()
 }
 
@@ -90,13 +92,24 @@ func (s *ActionSidebar) Draw(c *canvas.Canvas) {
 			c.DrawLine(b.Min.X+2, cellY+1, b.Max.X-1, cellY+1, canvas.Black)
 		}
 
-		// Icon centered in cell
-		iconSize := 24
-		iconX := cellRect.Min.X + (cellRect.Dx()-iconSize)/2
-		iconY := cellRect.Min.Y + (cellRect.Dy()-iconSize)/2
-		iconRect := image.Rect(iconX, iconY, iconX+iconSize, iconY+iconSize)
-		if !iconRect.Empty() {
-			btn.Icon.Draw(c, iconRect)
+		if _, h := btn.Icon.Size(); h > 0 {
+			// Icon centered in cell
+			iconSize := 24
+			iconX := cellRect.Min.X + (cellRect.Dx()-iconSize)/2
+			iconY := cellRect.Min.Y + (cellRect.Dy()-iconSize)/2
+			iconRect := image.Rect(iconX, iconY, iconX+iconSize, iconY+iconSize)
+			if !iconRect.Empty() {
+				btn.Icon.Draw(c, iconRect)
+			}
+		} else if btn.Label != "" {
+			// Text label centered in cell
+			f := canvas.EmbeddedFont(12)
+			if f != nil {
+				tw := textWidth(btn.Label, f)
+				lx := cellRect.Min.X + (cellRect.Dx()-tw)/2
+				ly := cellRect.Min.Y + (cellRect.Dy()-f.LineHeight())/2
+				c.DrawText(lx, ly, btn.Label, f, canvas.Black)
+			}
 		}
 	}
 }
