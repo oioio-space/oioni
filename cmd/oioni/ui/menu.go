@@ -115,7 +115,7 @@ func (l *ScrollableMenuList) Draw(c *canvas.Canvas) {
 		// Row separator (between rows only)
 		if i < menuVisible-1 {
 			sep := rowTop + menuRowH - 1
-			c.DrawLine(wb.Min.X, sep, wb.Max.X, sep, canvas.Black)
+			c.DrawLine(wb.Min.X, sep, wb.Max.X-1, sep, canvas.Black)
 		}
 	}
 }
