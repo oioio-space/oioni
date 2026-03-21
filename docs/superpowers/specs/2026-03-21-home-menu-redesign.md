@@ -4,6 +4,18 @@
 
 Remplacer le `HomeMenuWidget` actuel (20px rangées, cercles au lieu d'icônes, pas de scroll, conflit visuel header/sélection) par un menu adapté au tactile e-ink : grandes rangées scrollables via boutons ∧/∨.
 
+## Architecture
+
+**Widget composition** : l'écran home est composé de trois widgets indépendants coordonnés via closures. Chaque widget gère son propre rendu et ses propres touches. Le Navigator route le tactile automatiquement via les bounds (aucune dispatch manuelle).
+
+| Widget | Fichier | Responsabilité |
+|--------|---------|----------------|
+| `ScrollableMenuList` | `cmd/oioni/ui/menu.go` | Liste 2 rangées + état offset + tap rangée |
+| `NavButton` | `cmd/oioni/ui/menu.go` | Bouton ∧ ou ∨ unique, enabled/disabled |
+| `gui.NetworkStatusBar` | `ui/gui/widget_networkstatus.go` | Barre header (inchangé) |
+
+`home.go` instancie les trois, les câble via closures, et les place dans le layout (`HBox`/`VBox`) + dans `scene.Widgets` pour le touch routing automatique.
+
 ## Contexte hardware
 
 - Display logique : 250×122px (Rot90 depuis 122×250 physique)
@@ -91,11 +103,7 @@ if row >= 0 && row < menuVisible && offset+row < len(items) {
 return true
 ```
 
-## Struct HomeMenuWidget et homeMenuItem
-
-Supprimer le champ `selected int` de `HomeMenuWidget` (plus de sélection persistante).
-Ajouter `offset int` (initialisé à 0).
-Ajouter le champ `icon gui.Icon` dans `homeMenuItem` :
+## Structs
 
 ```go
 type homeMenuItem struct {
@@ -105,22 +113,40 @@ type homeMenuItem struct {
     onTap func()
 }
 
-type HomeMenuWidget struct {
+// ScrollableMenuList : liste + état scroll
+type ScrollableMenuList struct {
     gui.BaseWidget
     items  []homeMenuItem
     offset int
 }
+
+// NavButton : bouton unique ∧ ou ∨
+type NavButton struct {
+    gui.BaseWidget
+    sym      string       // "^" ou "v" (ASCII)
+    onTap    func()
+    isActive func() bool  // retourne false si bouton désactivé
+}
 ```
+
+**Câblage dans home.go :**
+```go
+list    := newScrollableMenuList(items)
+upBtn   := newNavButton("^", list.ScrollUp,   list.CanScrollUp)
+downBtn := newNavButton("v", list.ScrollDown, list.CanScrollDown)
+```
+
+`ScrollUp`/`ScrollDown` appellent `SetDirty()` sur la liste. Le Navigator re-rend tout — les boutons appellent `isActive()` à chaque Draw et reflètent l'état courant automatiquement.
 
 ## Fichiers modifiés
 
 | Fichier | Changement |
 |---------|------------|
-| `cmd/oioni/ui/menu.go` | Réécriture complète : nouvelles constantes, scroll state, draw+touch |
-| `cmd/oioni/ui/menu_test.go` | Tests mis à jour : PreferredSize=100px, scroll up/down, tap rangée, bouton disabled |
-| `cmd/oioni/ui/home.go` | Ajouter `icon: Icons.Config` etc. dans chaque `homeMenuItem` |
+| `cmd/oioni/ui/menu.go` | Réécriture : `ScrollableMenuList` + `NavButton` + `homeMenuItem` |
+| `cmd/oioni/ui/menu_test.go` | Tests pour les deux widgets |
+| `cmd/oioni/ui/home.go` | Composition : câblage list+boutons+layout, icons dans items |
 
-`home.go`, `icons.go`, `epaper.go`, `main.go` : aucun autre changement.
+`icons.go`, `epaper.go`, `main.go` : aucun changement.
 
 ## Constantes
 
