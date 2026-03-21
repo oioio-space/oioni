@@ -16,27 +16,27 @@ func NewHomeScene(nav *gui.Navigator) (*gui.Scene, *gui.NetworkStatusBar) {
 	menu := newHomeMenuWidget([]homeMenuItem{
 		{
 			name:  "Config",
-			desc:  "reseau · interfaces · device",
+			desc:  "reseau - interfaces - device",
 			onTap: func() { nav.Dispatch(func() { nav.Push(NewConfigScene(nav)) }) }, //nolint:errcheck
 		},
 		{
 			name:  "System",
-			desc:  "services · logs · processus",
+			desc:  "services - logs - processus",
 			onTap: func() { nav.Dispatch(func() { nav.Push(NewSystemScene(nav)) }) }, //nolint:errcheck
 		},
 		{
 			name:  "Attack",
-			desc:  "MITM · scan · deauth · spoof",
+			desc:  "MITM - scan - deauth - spoof",
 			onTap: func() { nav.Dispatch(func() { nav.Push(NewAttackScene(nav)) }) }, //nolint:errcheck
 		},
 		{
 			name:  "DFIR",
-			desc:  "capture · pcap · forensics",
+			desc:  "capture - pcap - forensics",
 			onTap: func() { nav.Dispatch(func() { nav.Push(NewDFIRScene(nav)) }) }, //nolint:errcheck
 		},
 		{
 			name:  "Info",
-			desc:  "aide · licences · a propos",
+			desc:  "aide - licences - a propos",
 			onTap: func() { nav.Dispatch(func() { nav.Push(NewInfoScene(nav)) }) }, //nolint:errcheck
 		},
 	})
