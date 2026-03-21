@@ -106,9 +106,7 @@ func (nsb *NetworkStatusBar) Draw(c *canvas.Canvas) {
 		}
 	}
 
-	nsb.mu.Lock()
-	nsb.badgeBounds = image.Rectangle{} // reset
-	nsb.mu.Unlock()
+	var newBadge image.Rectangle // empty by default
 
 	if len(upIfaces) == 0 {
 		// OFFLINE state
@@ -132,11 +130,14 @@ func (nsb *NetworkStatusBar) Draw(c *canvas.Canvas) {
 			badgeR := image.Rect(bx, r.Min.Y+2, bx+bw, r.Min.Y+11)
 			c.DrawRect(badgeR, canvas.White, true)
 			c.DrawText(bx+2, r.Min.Y+2, badgeText, f8, canvas.Black)
-			nsb.mu.Lock()
-			nsb.badgeBounds = badgeR
-			nsb.mu.Unlock()
+			newBadge = badgeR // capture for touch routing
 		}
 	}
+
+	// Single write — replaces both the reset and the old conditional write
+	nsb.mu.Lock()
+	nsb.badgeBounds = newBadge
+	nsb.mu.Unlock()
 
 	// ── Right zone: tool tray ──────────────────────────────────────────────
 	// Show at most 2 chips; if more, show "+N" badge to their left.
@@ -161,8 +162,15 @@ func (nsb *NetworkStatusBar) Draw(c *canvas.Canvas) {
 		// Progress bar outline
 		barR := image.Rect(rx, r.Min.Y+barY, rx+chipW, r.Min.Y+barY+barH)
 		c.DrawRect(barR, canvas.White, false)
-		// Fill
-		fillW := int(float64(chipW-2) * tool.Progress)
+		// Fill — clamp progress to [0, 1] to prevent overflow
+		progress := tool.Progress
+		if progress < 0 {
+			progress = 0
+		}
+		if progress > 1 {
+			progress = 1
+		}
+		fillW := int(float64(chipW-2) * progress)
 		if fillW > 0 {
 			fillR := image.Rect(rx+1, r.Min.Y+barY+1, rx+1+fillW, r.Min.Y+barY+barH-1)
 			c.DrawRect(fillR, canvas.White, true)
