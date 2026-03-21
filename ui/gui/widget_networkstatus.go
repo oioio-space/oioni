@@ -179,10 +179,6 @@ func (nsb *NetworkStatusBar) Draw(c *canvas.Canvas) {
 		c.DrawText(rx, r.Min.Y+2, overText, f8, canvas.White)
 	}
 
-	// 2px separator at bottom of header
-	sepY := r.Max.Y - 2
-	c.DrawLine(r.Min.X, sepY, r.Max.X, sepY, canvas.Black)
-	c.DrawLine(r.Min.X, sepY+1, r.Max.X, sepY+1, canvas.Black)
 }
 
 // newInterfaceDetailScene wraps InterfaceDetailPopup in a Scene and pushes it.

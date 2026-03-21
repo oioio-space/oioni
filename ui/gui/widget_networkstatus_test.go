@@ -75,8 +75,14 @@ func TestNetworkStatusBar_BadgeTouchDispatchesWhenNavNil(t *testing.T) {
 	nsb.SetBounds(image.Rect(0, 0, 250, 22))
 	nsb.SetInterfaces([]IfaceInfo{
 		{Name: "eth0", IP: "1.2.3.4", Up: true},
-		{Name: "usb0", IP: "", Up: false},
+		{Name: "usb0", IP: "192.168.42.1", Up: true}, // both Up → badge is drawn
 	})
-	// Tap in badge area (right of IP text, within header)
+	// Draw first to populate badgeBounds
+	c := newTestCanvas()
+	nsb.Draw(c)
+	if nsb.badgeBounds.Empty() {
+		t.Fatal("badgeBounds should be non-empty after Draw with 2 up interfaces")
+	}
+	// Tap somewhere in the header — nav=nil so dispatch is skipped, must not panic
 	nsb.HandleTouch(touch.TouchPoint{X: 80, Y: 5})
 }
