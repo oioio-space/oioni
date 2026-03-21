@@ -10,13 +10,12 @@ import (
 )
 
 const (
-	menuRowH   = 20
-	menuRows   = 5
-	menuIconX  = 11  // x center of icon circle
-	menuIconR  = 7   // radius of icon circle
-	menuTextX  = 24  // x start of name/desc text
-	menuChevX  = 246 // chevron right edge x
-	menuSepEndX = 250 // separator right edge (full display width)
+	menuRowH  = 20
+	menuRows  = 5
+	menuIconX = 11  // x center of icon circle
+	menuIconR = 7   // radius of icon circle
+	menuTextX = 24  // x start of name/desc text
+	menuChevX = 246 // chevron right edge x
 )
 
 type homeMenuItem struct {
@@ -84,6 +83,7 @@ func (m *HomeMenuWidget) Draw(c *canvas.Canvas) {
 
 	f12 := canvas.EmbeddedFont(12)
 	f8 := canvas.EmbeddedFont(8)
+	chevW := menuTextWidth(">", f12)
 
 	for i, item := range m.items {
 		rowTop := r.Min.Y + i*menuRowH
@@ -100,13 +100,7 @@ func (m *HomeMenuWidget) Draw(c *canvas.Canvas) {
 
 		// Icon: filled circle at (menuIconX, rowCenter)
 		ix := r.Min.X + menuIconX
-		for dy := -menuIconR; dy <= menuIconR; dy++ {
-			for dx := -menuIconR; dx <= menuIconR; dx++ {
-				if dx*dx+dy*dy <= menuIconR*menuIconR {
-					c.SetPixel(ix+dx, rowCenter+dy, fg)
-				}
-			}
-		}
+		c.DrawCircle(ix, rowCenter, menuIconR, fg, true)
 
 		// Name: 12pt
 		if f12 != nil {
@@ -120,13 +114,12 @@ func (m *HomeMenuWidget) Draw(c *canvas.Canvas) {
 
 		// Chevron: ">" right-aligned so text ends at menuChevX
 		if f12 != nil {
-			cw := menuTextWidth(">", f12)
-			c.DrawText(r.Min.X+menuChevX-cw, rowTop+2, ">", f12, fg)
+			c.DrawText(r.Min.X+menuChevX-chevW, rowTop+2, ">", f12, fg)
 		}
 
 		// 1px separator (not on active row)
 		if !active {
-			c.DrawLine(r.Min.X+16, rowBot-1, r.Min.X+menuSepEndX, rowBot-1, canvas.Black)
+			c.DrawLine(r.Min.X+16, rowBot-1, r.Max.X, rowBot-1, canvas.Black)
 		}
 	}
 }
