@@ -1,4 +1,4 @@
-// cmd/oioni/ui/menu.go — HomeMenuWidget: 5-row operator-style menu
+// cmd/oioni/ui/menu.go — ScrollableMenuList + NavButton for the home screen
 package ui
 
 import (
@@ -10,116 +10,170 @@ import (
 )
 
 const (
-	menuRowH  = 20
-	menuRows  = 5
-	menuIconX = 11  // x center of icon circle
-	menuIconR = 7   // radius of icon circle
-	menuTextX = 24  // x start of name/desc text
-	menuChevX = 246 // chevron right edge x
+	menuRowH     = 50
+	menuVisible  = 2
+	menuNavW     = 50
+	menuIconX    = 8
+	menuIconSize = 32
+	menuIconYOff = 9  // = (menuRowH - menuIconSize) / 2
+	menuTextX    = 48 // = menuIconX + menuIconSize + 8
 )
 
 type homeMenuItem struct {
 	name  string
 	desc  string
+	icon  gui.Icon
 	onTap func()
 }
 
-// HomeMenuWidget renders 5 menu rows (5×20px = 100px total).
-type HomeMenuWidget struct {
+// ── ScrollableMenuList ────────────────────────────────────────────────────────
+
+// ScrollableMenuList renders 2 rows at a time from a list of items.
+// Scroll state is managed via ScrollUp/ScrollDown called by NavButton closures.
+type ScrollableMenuList struct {
 	gui.BaseWidget
-	items    []homeMenuItem
-	selected int // index of last tapped row, -1 = none
+	items  []homeMenuItem
+	offset int
 }
 
-func newHomeMenuWidget(items []homeMenuItem) *HomeMenuWidget {
-	m := &HomeMenuWidget{items: items, selected: -1}
-	m.SetDirty()
-	return m
+func newScrollableMenuList(items []homeMenuItem) *ScrollableMenuList {
+	l := &ScrollableMenuList{items: items}
+	l.SetDirty()
+	return l
 }
 
-func (m *HomeMenuWidget) PreferredSize() image.Point { return image.Pt(0, menuRows*menuRowH) }
-func (m *HomeMenuWidget) MinSize() image.Point       { return image.Pt(0, menuRows*menuRowH) }
+func (l *ScrollableMenuList) PreferredSize() image.Point { return image.Pt(0, menuVisible*menuRowH) }
+func (l *ScrollableMenuList) MinSize() image.Point       { return image.Pt(0, menuVisible*menuRowH) }
 
-func (m *HomeMenuWidget) HandleTouch(pt touch.TouchPoint) bool {
-	r := m.Bounds()
-	if r.Empty() {
-		return false
+func (l *ScrollableMenuList) CanScrollUp() bool { return l.offset > 0 }
+func (l *ScrollableMenuList) CanScrollDown() bool {
+	return l.offset < len(l.items)-menuVisible
+}
+
+func (l *ScrollableMenuList) ScrollUp() {
+	if l.CanScrollUp() {
+		l.offset--
+		l.SetDirty()
 	}
-	py := int(pt.Y)
-	if py < r.Min.Y || py >= r.Max.Y {
-		return false
+}
+
+func (l *ScrollableMenuList) ScrollDown() {
+	if l.CanScrollDown() {
+		l.offset++
+		l.SetDirty()
 	}
-	row := (py - r.Min.Y) / menuRowH
-	if row < 0 || row >= len(m.items) {
-		return false
-	}
-	m.selected = row
-	m.SetDirty()
-	if m.items[row].onTap != nil {
-		m.items[row].onTap()
+}
+
+func (l *ScrollableMenuList) HandleTouch(pt touch.TouchPoint) bool {
+	wb := l.Bounds()
+	row := (int(pt.Y) - wb.Min.Y) / menuRowH
+	if row >= 0 && row < menuVisible {
+		actual := l.offset + row
+		if actual < len(l.items) && l.items[actual].onTap != nil {
+			l.items[actual].onTap()
+		}
 	}
 	return true
 }
 
-// menuTextWidth returns pixel width of text in the given canvas.Font.
-func menuTextWidth(text string, f canvas.Font) int {
-	if f == nil {
-		return 0
+func (l *ScrollableMenuList) Draw(c *canvas.Canvas) {
+	wb := l.Bounds()
+	if wb.Empty() {
+		return
 	}
-	w := 0
-	for _, r := range text {
-		_, gw, _ := f.Glyph(r)
-		w += gw
+	c.DrawRect(wb, canvas.White, true)
+
+	f12 := canvas.EmbeddedFont(12)
+	f8 := canvas.EmbeddedFont(8)
+
+	for i := 0; i < menuVisible; i++ {
+		idx := l.offset + i
+		if idx >= len(l.items) {
+			break
+		}
+		item := l.items[idx]
+		rowTop := wb.Min.Y + i*menuRowH
+
+		// Icon (32×32, centered vertically in row)
+		item.icon.Draw(c, image.Rect(
+			wb.Min.X+menuIconX,
+			rowTop+menuIconYOff,
+			wb.Min.X+menuIconX+menuIconSize,
+			rowTop+menuIconYOff+menuIconSize,
+		))
+
+		// Name
+		if f12 != nil {
+			c.DrawText(wb.Min.X+menuTextX, rowTop+6, item.name, f12, canvas.Black)
+		}
+
+		// Description
+		if f8 != nil {
+			c.DrawText(wb.Min.X+menuTextX, rowTop+28, item.desc, f8, canvas.Black)
+		}
+
+		// Row separator (between rows only)
+		if i < menuVisible-1 {
+			sep := rowTop + menuRowH - 1
+			c.DrawLine(wb.Min.X, sep, wb.Max.X, sep, canvas.Black)
+		}
 	}
-	return w
 }
 
-func (m *HomeMenuWidget) Draw(c *canvas.Canvas) {
-	r := m.Bounds()
+// ── NavButton ─────────────────────────────────────────────────────────────────
+
+// NavButton is a 50×50px tap button. isActive controls the rendered state.
+// onTap is always called on touch — the caller (ScrollUp/ScrollDown) handles no-op logic.
+type NavButton struct {
+	gui.BaseWidget
+	sym      string
+	onTap    func()
+	isActive func() bool
+}
+
+func newNavButton(sym string, onTap func(), isActive func() bool) *NavButton {
+	b := &NavButton{sym: sym, onTap: onTap, isActive: isActive}
+	b.SetDirty()
+	return b
+}
+
+func (b *NavButton) PreferredSize() image.Point { return image.Pt(menuNavW, menuNavW) }
+func (b *NavButton) MinSize() image.Point       { return image.Pt(menuNavW, menuNavW) }
+
+func (b *NavButton) HandleTouch(pt touch.TouchPoint) bool {
+	if b.onTap != nil {
+		b.onTap()
+	}
+	return true
+}
+
+func (b *NavButton) Draw(c *canvas.Canvas) {
+	r := b.Bounds()
 	if r.Empty() {
 		return
 	}
 	c.DrawRect(r, canvas.White, true)
+	c.DrawRect(r, canvas.Black, false)
 
 	f12 := canvas.EmbeddedFont(12)
-	f8 := canvas.EmbeddedFont(8)
-	chevW := menuTextWidth(">", f12)
 
-	for i, item := range m.items {
-		rowTop := r.Min.Y + i*menuRowH
-		rowBot := rowTop + menuRowH
-		rowCenter := rowTop + menuRowH/2
-		rowR := image.Rect(r.Min.X, rowTop, r.Max.X, rowBot)
-
-		active := i == m.selected
-		fg := canvas.Black
-		if active {
-			fg = canvas.White
-			c.DrawRect(rowR, canvas.Black, true)
-		}
-
-		// Icon: filled circle at (menuIconX, rowCenter)
-		ix := r.Min.X + menuIconX
-		c.DrawCircle(ix, rowCenter, menuIconR, fg, true)
-
-		// Name: 12pt
-		if f12 != nil {
-			c.DrawText(r.Min.X+menuTextX, rowTop+2, item.name, f12, fg)
-		}
-
-		// Description: 8pt at y=rowBot-9
-		if f8 != nil {
-			c.DrawText(r.Min.X+menuTextX, rowBot-9, item.desc, f8, fg)
-		}
-
-		// Chevron: ">" right-aligned so text ends at menuChevX
-		if f12 != nil {
-			c.DrawText(r.Min.X+menuChevX-chevW, rowTop+2, ">", f12, fg)
-		}
-
-		// 1px separator (not on active row)
-		if !active {
-			c.DrawLine(r.Min.X+16, rowBot-1, r.Max.X, rowBot-1, canvas.Black)
-		}
+	if !b.isActive() {
+		// Disabled: horizontal bar
+		cx := r.Min.X + r.Dx()/2
+		cy := r.Min.Y + r.Dy()/2
+		c.DrawLine(cx-4, cy, cx+4, cy, canvas.Black)
+		return
 	}
+	if f12 == nil {
+		return
+	}
+	// Center symbol
+	tw := 0
+	for _, ch := range b.sym {
+		_, w, _ := f12.Glyph(ch)
+		tw += w
+	}
+	tx := r.Min.X + (r.Dx()-tw)/2
+	ty := r.Min.Y + (r.Dy()-f12.LineHeight())/2
+	c.DrawText(tx, ty, b.sym, f12, canvas.Black)
 }
