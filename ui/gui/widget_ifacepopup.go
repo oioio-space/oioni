@@ -72,9 +72,10 @@ func (p *InterfaceDetailPopup) Draw(c *canvas.Canvas) {
 
 	// 4. Interface rows (18px each)
 	const rowH = 18
+	const hintH = 11 // 8pt line height (~8px) + 3px margin
 	y := boxY0 + titleH
 	for _, iface := range p.interfaces {
-		if y+rowH > boxY1-rowH { // leave room for hint
+		if y+rowH > boxY1-hintH { // leave room for hint
 			break
 		}
 		cx := boxX0 + 6
@@ -91,11 +92,12 @@ func (p *InterfaceDetailPopup) Draw(c *canvas.Canvas) {
 				}
 			}
 		} else {
-			// Empty circle r=2 (outline only)
+			// Empty circle r=2 outline: d in [2,4] gives pixels at
+			// (±1,±1), (±2,0), (0,±2) — 8 pixels forming a circle.
 			for dx := -2; dx <= 2; dx++ {
 				for dy := -2; dy <= 2; dy++ {
 					d := dx*dx + dy*dy
-					if d >= 3 && d <= 4 {
+					if d >= 2 && d <= 4 {
 						c.SetPixel(cx+dx, cy+dy, canvas.Black)
 					}
 				}
@@ -126,6 +128,6 @@ func (p *InterfaceDetailPopup) Draw(c *canvas.Canvas) {
 	// 5. Hint row: "swipe down to close" centered in 8pt
 	hintText := "swipe down to close"
 	hw := textWidth(hintText, f8)
-	hintY := boxY1 - f8.LineHeight() - 3
+	hintY := boxY1 - hintH + 1
 	c.DrawText(boxX0+(boxX1-boxX0-hw)/2, hintY, hintText, f8, canvas.Black)
 }
