@@ -176,7 +176,7 @@ func main() {
 			if *withMassStorage {
 				gadgetFuncs = append(gadgetFuncs, "Mass")
 			}
-			ep.UpdateStatus("USB: "+strings.Join(gadgetFuncs, " "), "")
+			ep.UpdateStatus("USB: "+strings.Join(gadgetFuncs, " "), "") // TODO: wire via ep.nsb.SetInterfaces/SetTools
 			if rndis != nil {
 				if ifname, err := rndis.IfName(); err == nil {
 					log.Printf("RNDIS → %s", ifname)
