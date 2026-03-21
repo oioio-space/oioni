@@ -10,12 +10,13 @@ import (
 )
 
 const (
-	menuRowH  = 20
-	menuRows  = 5
-	menuIconX = 11  // x center of icon circle
-	menuIconR = 7   // radius of icon circle
-	menuTextX = 24  // x start of name/desc text
-	menuChevX = 246 // chevron right edge x
+	menuRowH   = 20
+	menuRows   = 5
+	menuIconX  = 11  // x center of icon circle
+	menuIconR  = 7   // radius of icon circle
+	menuTextX  = 24  // x start of name/desc text
+	menuChevX  = 246 // chevron right edge x
+	menuSepEndX = 250 // separator right edge (full display width)
 )
 
 type homeMenuItem struct {
@@ -125,7 +126,7 @@ func (m *HomeMenuWidget) Draw(c *canvas.Canvas) {
 
 		// 1px separator (not on active row)
 		if !active {
-			c.DrawLine(r.Min.X+16, rowBot-1, r.Max.X, rowBot-1, canvas.Black)
+			c.DrawLine(r.Min.X+16, rowBot-1, r.Min.X+menuSepEndX, rowBot-1, canvas.Black)
 		}
 	}
 }
