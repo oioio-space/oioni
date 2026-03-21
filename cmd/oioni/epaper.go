@@ -29,7 +29,7 @@ const (
 
 type epaperState struct {
 	nav    *gui.Navigator
-	status *gui.StatusBar
+	nsb    *gui.NetworkStatusBar
 	cancel context.CancelFunc
 }
 
@@ -69,9 +69,8 @@ func startEPaper(ctx context.Context) *epaperState {
 	}
 
 	nav := gui.NewNavigatorWithIdle(d, idleTimeout)
-	status := gui.NewStatusBar("", "")
 
-	home := oioniui.NewHomeScene(nav, status)
+	home, nsb := oioniui.NewHomeScene(nav)
 	if err := nav.Push(home); err != nil {
 		log.Printf("epaper: initial render failed: %v", err)
 		cancel()
@@ -91,17 +90,14 @@ func startEPaper(ctx context.Context) *epaperState {
 		nav.Run(guiCtx, tc)
 	}()
 
-	return &epaperState{nav: nav, status: status, cancel: cancel}
+	return &epaperState{nav: nav, nsb: nsb, cancel: cancel}
 }
 
-// UpdateStatus updates the status bar text and triggers a re-render via RequestRender.
-func (e *epaperState) UpdateStatus(left, right string) {
+// UpdateStatus is a no-op stub — wire real iface/tool data via nsb.SetInterfaces/SetTools.
+func (e *epaperState) UpdateStatus(_, _ string) {
 	if e == nil {
 		return
 	}
-	e.status.SetLeft(left)
-	e.status.SetRight(right)
-	e.nav.RequestRender()
 }
 
 // Close cancels the GUI goroutine and releases hardware resources.
