@@ -47,7 +47,7 @@ func (l *ScrollableMenuList) MinSize() image.Point       { return image.Pt(0, me
 
 func (l *ScrollableMenuList) CanScrollUp() bool { return l.offset > 0 }
 func (l *ScrollableMenuList) CanScrollDown() bool {
-	return l.offset < len(l.items)-menuVisible
+	return l.offset+menuVisible < len(l.items)
 }
 
 func (l *ScrollableMenuList) ScrollUp() {
@@ -132,6 +132,9 @@ type NavButton struct {
 }
 
 func newNavButton(sym string, onTap func(), isActive func() bool) *NavButton {
+	if isActive == nil {
+		isActive = func() bool { return false }
+	}
 	b := &NavButton{sym: sym, onTap: onTap, isActive: isActive}
 	b.SetDirty()
 	return b

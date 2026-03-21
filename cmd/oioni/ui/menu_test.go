@@ -103,6 +103,17 @@ func TestScrollableMenuList_CanScrollDown(t *testing.T) {
 	}
 }
 
+func TestScrollableMenuList_CanScrollDown_ShortList(t *testing.T) {
+	// Lists shorter than menuVisible must never report CanScrollDown=true.
+	for _, n := range []int{0, 1} {
+		items := make([]homeMenuItem, n)
+		l := newScrollableMenuList(items)
+		if l.CanScrollDown() {
+			t.Errorf("CanScrollDown() = true for %d-item list, want false", n)
+		}
+	}
+}
+
 func TestScrollableMenuList_TapRow0(t *testing.T) {
 	called := ""
 	items := []homeMenuItem{
