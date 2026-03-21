@@ -199,17 +199,3 @@ func newInterfaceDetailScene(nav *Navigator, ifaces []IfaceInfo) *Scene {
 	}
 }
 
-// stubInterfaceDetailPopup is a placeholder until widget_ifacepopup.go is implemented.
-type stubInterfaceDetailPopup struct{ BaseWidget }
-
-func (s *stubInterfaceDetailPopup) Draw(_ *canvas.Canvas) {}
-
-// newInterfaceDetailPopup is a stub that will be replaced by Task 2 (widget_ifacepopup.go).
-// DELETE this stub once widget_ifacepopup.go defines the real implementation.
-func newInterfaceDetailPopup(nav *Navigator, ifaces []IfaceInfo) Widget {
-	_ = nav
-	_ = ifaces
-	p := &stubInterfaceDetailPopup{}
-	p.SetDirty()
-	return p
-}

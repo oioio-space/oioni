@@ -915,3 +915,13 @@ func TestPopTo_CallsOnEnterForNewTop(t *testing.T) {
 		t.Error("OnEnter not called for root scene after PopTo(1)")
 	}
 }
+
+// drainDispatch executes one pending Dispatch function synchronously.
+// For use in tests only — simulates the Run() event loop draining dispatchFn.
+func (nav *Navigator) drainDispatch() {
+	select {
+	case fn := <-nav.dispatchFn:
+		fn()
+	default:
+	}
+}
