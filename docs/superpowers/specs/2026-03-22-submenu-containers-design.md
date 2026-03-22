@@ -107,6 +107,10 @@ root.SetBounds(image.Rect(0, 0, epd.Height, epd.Width))
 
 Note: remove the 2px horizontal inset (`Rect(2, 0, epd.Height-2, epd.Width)`) — bounds management belongs to the layout system, not hardcoded in scene constructors.
 
+Note: no explicit spacer between `navbar` and `contentWidget`. `NavBar.Draw()` already renders its 2px separator within its own 18px bounds — the extra `FixedSize(NewSpacer(), 2)` in the old code was redundant.
+
+Note on swipe-scroll: the Navigator's swipe handler only iterates top-level `Scene.Widgets` for `scrollable`/`hScrollable` interfaces (not recursive). If a future scene's content widget needs swipe-to-scroll (e.g. a `ScrollableList`), it must be exposed at `Scene.Widgets` top level. The helper signature `newCategoryScene(nav, title, contentWidget, opts...)` should pass `contentWidget` through to the top of `Scene.Widgets` alongside `root` when the caller signals it implements `scrollable`.
+
 ## Components
 
 | Component | Location | Action |
@@ -124,7 +128,7 @@ Note: remove the 2px horizontal inset (`Rect(2, 0, epd.Height-2, epd.Width)`) �
 
 ## Error Handling
 
-- `nav.Pop()` and `nav.PopTo()` errors are silently ignored (`//nolint:errcheck`) — display errors on e-ink are non-fatal and not user-actionable.
+- `nav.Pop()` and `nav.PopTo()` errors are silently ignored (`//nolint:errcheck`) — display errors on e-ink are non-fatal and not user-actionable. Exact placement: `nav.PopTo(1) //nolint:errcheck` inside `popToRoot`, and `nav.Pop() //nolint:errcheck` inline in the sidebar `OnTap` closure.
 - Scene construction functions do not return errors — layout is deterministic.
 
 ## Testing
