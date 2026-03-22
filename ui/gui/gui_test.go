@@ -531,9 +531,9 @@ func TestNavigatorTouchRoutingCallsHandler(t *testing.T) {
 	btn.SetBounds(image.Rect(10, 10, 60, 30))
 	s := &Scene{Widgets: []Widget{btn}}
 	nav.Push(s)
-	// logX = pt.Y → want inside [10,60), so pt.Y=35
-	// logY = pt.X → want inside [10,30), so pt.X=20
-	nav.handleTouch(touch.TouchPoint{X: 20, Y: 35})
+	// logX = 249-pt.Y → want inside [10,60), so 249-pt.Y=35 → pt.Y=214
+	// logY = pt.X    → want inside [10,30), so pt.X=20
+	nav.handleTouch(touch.TouchPoint{X: 20, Y: 214})
 	if !clicked {
 		t.Error("touch should route to button and fire OnClick")
 	}
@@ -806,8 +806,8 @@ func TestNavigator_NoHScrollable_SwipeLeft_Pops(t *testing.T) {
 //
 // GT1151→logical transform (Rot90, epd.Width=122, epd.Height=250):
 //
-//	logX = pt.Y  (GT1151 Y → logical horizontal axis)
-//	logY = pt.X  (GT1151 X → logical vertical axis, no inversion)
+//	logX = (epd.Height-1) - pt.Y  (GT1151 Y → logical horizontal, inverted)
+//	logY = pt.X                   (GT1151 X → logical vertical, no inversion)
 //
 // ActionSidebar decomposes pt.Y to route a tap to the correct button cell.
 // If it receives raw GT1151 X instead of logical Y, the wrong cell is selected.
@@ -827,11 +827,11 @@ func TestNavigatorHandleTouchPassesLogicalCoordinates(t *testing.T) {
 	nav.Push(&Scene{Widgets: []Widget{sidebar}})
 
 	// We want to hit logical (22, 90) — inside cell 1 (Y=90 > 61).
-	// GT1151 coords: logX=pt.Y → pt.Y=22; logY=pt.X → pt.X=90.
-	nav.handleTouch(touch.TouchPoint{X: 90, Y: 22})
+	// logX = 249-pt.Y = 22 → pt.Y = 227; logY = pt.X = 90.
+	nav.handleTouch(touch.TouchPoint{X: 90, Y: 227})
 
-	// With the bug (pt.X=22 used as logY): idx = 22/61 = 0 → wrong cell.
-	// With the fix (logY=pt.X=90 used): idx = 90/61 = 1 → correct.
+	// With the old (wrong) mapping logX=pt.Y=227 → misses sidebar bounds (0..44).
+	// With the correct mapping logX=249-pt.Y=22 → hits sidebar, logY=90 → cell 1.
 	if tapped != 1 {
 		t.Errorf("touch at logical Y=90 should tap cell 1, got %d (coordinate mismatch?)", tapped)
 	}

@@ -93,8 +93,8 @@ func (l *ScrollableList) HandleTouch(pt touch.TouchPoint) bool {
 	return true
 }
 
-// Draw renders the visible rows. Each item draws itself in its row bounds.
-// A 2px separator is drawn between rows (e-ink safe: 1px lines can disappear).
+// Draw renders the visible rows. Each item draws itself inside a rounded-rect
+// card inset from the row cell, matching the ActionSidebar button style.
 func (l *ScrollableList) Draw(c *canvas.Canvas) {
 	wb := l.Bounds()
 	if wb.Empty() || l.RowH <= 0 {
@@ -102,22 +102,22 @@ func (l *ScrollableList) Draw(c *canvas.Canvas) {
 	}
 	c.DrawRect(wb, canvas.White, true)
 	vis := l.visible()
+	const pad = 2
 	for i := 0; i < vis; i++ {
 		idx := l.offset + i
 		if idx >= len(l.items) {
 			break
 		}
-		rowBounds := image.Rect(
-			wb.Min.X, wb.Min.Y+i*l.RowH,
-			wb.Max.X, wb.Min.Y+(i+1)*l.RowH,
-		)
-		l.items[idx].Draw(c, rowBounds)
-		// 2px separator between rows (not after last visible row, not if no next item)
-		if i < vis-1 && idx+1 < len(l.items) {
-			// Draw separator straddling the row boundary: last pixel of row i + first pixel of row i+1.
-			sep := rowBounds.Max.Y - 1
-			c.DrawLine(wb.Min.X, sep, wb.Max.X, sep, canvas.Black)
-			c.DrawLine(wb.Min.X, sep+1, wb.Max.X, sep+1, canvas.Black)
+		cellY := wb.Min.Y + i*l.RowH
+		topPad := pad
+		if i > 0 {
+			topPad = pad + pad
 		}
+		cardRect := image.Rect(wb.Min.X+pad, cellY+topPad, wb.Max.X-pad, cellY+l.RowH-pad)
+		if !cardRect.Empty() {
+			DrawRoundedRect(c, cardRect, 4, true, canvas.White)
+			DrawRoundedRect(c, cardRect, 4, false, canvas.Black)
+		}
+		l.items[idx].Draw(c, cardRect)
 	}
 }
