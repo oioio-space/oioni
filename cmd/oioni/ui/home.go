@@ -23,12 +23,14 @@ func NewHomeScene(nav *gui.Navigator) (*gui.Scene, *gui.NetworkStatusBar) {
 		&homeListItem{name: "Info",   icon: Icons.Info,   onTap: func() { nav.Dispatch(func() { nav.Push(NewInfoScene(nav)) }) }}, //nolint:errcheck
 	}
 
-	list    := gui.NewScrollableList(items, homeRowH)
-	upBtn   := gui.NewIconNavButton(Icons.Up, list.ScrollUp, list.CanScrollUp)
-	downBtn := gui.NewIconNavButton(Icons.Down, list.ScrollDown, list.CanScrollDown)
+	list := gui.NewScrollableList(items, homeRowH)
+	sidebar := gui.NewActionSidebar(
+		gui.SidebarButton{Icon: Icons.Oni, OnTap: func() {}},
+		gui.SidebarButton{Icon: Icons.Up, OnTap: list.ScrollUp},
+		gui.SidebarButton{Icon: Icons.Down, OnTap: list.ScrollDown},
+	)
 
-	navCol  := gui.NewVBox(gui.Expand(upBtn), gui.Expand(downBtn))
-	menuRow := gui.NewHBox(gui.Expand(list), gui.FixedSize(navCol, homeNavW))
+	menuRow := gui.NewHBox(gui.Expand(list), gui.FixedSize(sidebar, homeNavW))
 	content := gui.NewVBox(gui.FixedSize(nsb, 22), gui.Expand(menuRow))
 	content.SetBounds(image.Rect(0, 0, epd.Height, epd.Width))
 

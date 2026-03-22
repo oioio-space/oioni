@@ -30,14 +30,14 @@ func withExtraSidebarBtn(icon gui.Icon, onTap func()) SubSceneOption {
 // Layout (250×122px logical):
 //
 //	┌─────────────────────────┬────┐
-//	│ Home > title   (18px)   │    │
-//	├─────────────────────────┤Oni │ 44px wide
-//	│      contentWidget      │────│
-//	│      (expands)          │Back│
+//	│ Home > title   (18px)   │Back│
+//	├─────────────────────────┤────│ 44px wide
+//	│      contentWidget      │    │
+//	│      (expands)          │Down│
 //	└─────────────────────────┴────┘
 //
-// Default sidebar: [Oni → home, Back → pop one level].
-// Extra buttons prepended above Oni via SubSceneOption.
+// Default sidebar: [Back → pop one level, Down → scroll content list].
+// Extra buttons prepended above Back via SubSceneOption.
 //
 // Touch routing: root's Children() traversal reaches the sidebar recursively,
 // so sidebar must NOT be listed separately in Scene.Widgets.
@@ -52,12 +52,12 @@ func newCategoryScene(nav *gui.Navigator, title string, contentWidget gui.Widget
 
 	navbar := gui.NewNavBar("Home", title)
 
-	// Build sidebar: extra buttons first, then default Oni + Back.
+	// Build sidebar: extra buttons first, then default Back + Down.
 	sidebarBtns := make([]gui.SidebarButton, 0, len(cfg.extraSidebarButtons)+2)
 	sidebarBtns = append(sidebarBtns, cfg.extraSidebarButtons...)
 	sidebarBtns = append(sidebarBtns,
-		gui.SidebarButton{Icon: Icons.Oni, OnTap: func() { popToRoot(nav) }},
 		gui.SidebarButton{Icon: Icons.Back, OnTap: func() { nav.Pop() }}, //nolint:errcheck
+		gui.SidebarButton{Icon: Icons.Down, OnTap: func() {}},            // placeholder: future list scroll
 	)
 	sidebar := gui.NewActionSidebar(sidebarBtns...)
 
