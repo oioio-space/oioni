@@ -251,11 +251,17 @@ func collectAllWidgets(widgets []Widget) []Widget {
 	return all
 }
 
-// handleTouch maps physical touch coords → logical coords, then routes to the
-// deepest Touchable widget in the tree that contains the logical point.
+// handleTouch maps GT1151 touch coords → logical canvas coords, then routes
+// to the deepest Touchable widget in the tree containing the logical point.
+//
+// GT1151 coordinate mapping (empirically verified on Waveshare 2.13" Touch HAT):
+//   logX = pt.Y  (GT1151 Y → logical horizontal axis, range 0..epd.Height-1)
+//   logY = pt.X  (GT1151 X → logical vertical axis,   range 0..epd.Width-1)
+// No axis inversion: the touch chip reports coordinates that match the canvas
+// logical space directly once axes are swapped.
 func (nav *Navigator) handleTouch(pt touch.TouchPoint) {
-	logX := clamp((epd.Height-1)-int(pt.Y), 0, epd.Height-1)
-	logY := clamp((epd.Width-1)-int(pt.X), 0, epd.Width-1)
+	logX := clamp(int(pt.Y), 0, epd.Height-1)
+	logY := clamp(int(pt.X), 0, epd.Width-1)
 	logPt := image.Pt(logX, logY)
 
 	if len(nav.stack) == 0 {
@@ -421,8 +427,7 @@ func (nav *Navigator) Run(ctx context.Context, events <-chan touch.TouchEvent) {
 					// Gesture already handled — consume remaining event pairs silently.
 					continue
 				}
-				// Physical→logical: logX = pt.Y, logY = 121 - pt.X
-				// Horizontal (left/right) corresponds to physical Y; vertical to physical X.
+				// Swipe deltas: horizontal axis = GT1151 Y (logX), vertical = GT1151 X (logY).
 				dx := int(firstPt.Y) - int(pt.Y)
 				dy := int(pt.X) - int(firstPt.X)
 				adx, ady := dx, dy

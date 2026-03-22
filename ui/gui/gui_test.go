@@ -531,10 +531,9 @@ func TestNavigatorTouchRoutingCallsHandler(t *testing.T) {
 	btn.SetBounds(image.Rect(10, 10, 60, 30))
 	s := &Scene{Widgets: []Widget{btn}}
 	nav.Push(s)
-	// logX = clamp((250-1)-pt.Y, 0, 249) = 249-229 = 20 → want inside [10,60)
-	// logY = clamp((122-1)-pt.X, 0, 121) = 121-106 = 15 → want inside [10,30)
-	// So pt.Y=229, pt.X=106
-	nav.handleTouch(touch.TouchPoint{X: 106, Y: 229})
+	// logX = pt.Y → want inside [10,60), so pt.Y=35
+	// logY = pt.X → want inside [10,30), so pt.X=20
+	nav.handleTouch(touch.TouchPoint{X: 20, Y: 35})
 	if !clicked {
 		t.Error("touch should route to button and fire OnClick")
 	}
@@ -803,14 +802,15 @@ func TestNavigator_NoHScrollable_SwipeLeft_Pops(t *testing.T) {
 }
 
 // TestNavigatorHandleTouchPassesLogicalCoordinates verifies that HandleTouch
-// receives logical (rotated) coordinates, not raw physical touch coordinates.
+// receives logical (rotated) coordinates, not raw GT1151 touch coordinates.
 //
-// Physical→logical transform (Rot90, epd.Width=122, epd.Height=250):
+// GT1151→logical transform (Rot90, epd.Width=122, epd.Height=250):
 //
-//	logX = (epd.Height-1) - pt.Y = 249 - pt.Y,  logY = (epd.Width-1) - pt.X = 121 - pt.X
+//	logX = pt.Y  (GT1151 Y → logical horizontal axis)
+//	logY = pt.X  (GT1151 X → logical vertical axis, no inversion)
 //
 // ActionSidebar decomposes pt.Y to route a tap to the correct button cell.
-// If it receives physical coordinates instead of logical, the wrong cell is selected.
+// If it receives raw GT1151 X instead of logical Y, the wrong cell is selected.
 func TestNavigatorHandleTouchPassesLogicalCoordinates(t *testing.T) {
 	d := &fakeDisplay{}
 	nav := NewNavigator(d)
@@ -827,11 +827,11 @@ func TestNavigatorHandleTouchPassesLogicalCoordinates(t *testing.T) {
 	nav.Push(&Scene{Widgets: []Widget{sidebar}})
 
 	// We want to hit logical (22, 90) — inside cell 1 (Y=90 > 61).
-	// Physical coords: logX=249-pt.Y → pt.Y=249-22=227; logY=121-pt.X → pt.X=121-90=31.
-	nav.handleTouch(touch.TouchPoint{X: 31, Y: 227})
+	// GT1151 coords: logX=pt.Y → pt.Y=22; logY=pt.X → pt.X=90.
+	nav.handleTouch(touch.TouchPoint{X: 90, Y: 22})
 
-	// With the bug (physical pt.Y=22 used): idx = 22/61 = 0 → wrong cell.
-	// With the fix (logical pt.Y=90 used): idx = 90/61 = 1 → correct.
+	// With the bug (pt.X=22 used as logY): idx = 22/61 = 0 → wrong cell.
+	// With the fix (logY=pt.X=90 used): idx = 90/61 = 1 → correct.
 	if tapped != 1 {
 		t.Errorf("touch at logical Y=90 should tap cell 1, got %d (coordinate mismatch?)", tapped)
 	}
