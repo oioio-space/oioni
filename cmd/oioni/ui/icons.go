@@ -15,7 +15,7 @@ var iconFS embed.FS
 // Icons holds all pre-loaded icon assets. Populated by init().
 var Icons struct {
 	Config, System, Attack, DFIR, Info gui.Icon
-	Oni, Back                          gui.Icon
+	Oni, Back, Up, Down                gui.Icon
 }
 
 func init() {
@@ -26,6 +26,8 @@ func init() {
 	Icons.Info = mustLoadIcon("info")
 	Icons.Oni = mustLoadIcon("oni")
 	Icons.Back = mustLoadIcon("back")
+	Icons.Up = mustLoadIcon("up")
+	Icons.Down = mustLoadIcon("down")
 }
 
 func mustLoadIcon(name string) gui.Icon {

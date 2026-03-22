@@ -24,8 +24,8 @@ func NewHomeScene(nav *gui.Navigator) (*gui.Scene, *gui.NetworkStatusBar) {
 	}
 
 	list    := gui.NewScrollableList(items, homeRowH)
-	upBtn   := gui.NewNavButton("^", list.ScrollUp, list.CanScrollUp)
-	downBtn := gui.NewNavButton("v", list.ScrollDown, list.CanScrollDown)
+	upBtn   := gui.NewIconNavButton(Icons.Up, list.ScrollUp, list.CanScrollUp)
+	downBtn := gui.NewIconNavButton(Icons.Down, list.ScrollDown, list.CanScrollDown)
 
 	navCol  := gui.NewVBox(gui.Expand(upBtn), gui.Expand(downBtn))
 	menuRow := gui.NewHBox(gui.Expand(list), gui.FixedSize(navCol, homeNavW))
