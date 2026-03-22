@@ -1,0 +1,70 @@
+// ui/gui/widget_navbutton.go — NavButton: tap button with active/disabled state
+package gui
+
+import (
+	"github.com/oioio-space/oioni/drivers/touch"
+	"github.com/oioio-space/oioni/ui/canvas"
+)
+
+// NavButton is a tap button with an active/disabled visual state.
+// Typically used for scroll controls (∧/∨) alongside a ScrollableList.
+//
+// The button always fires onTap on touch — the disabled state is visual only.
+// The caller's onTap function (e.g. ScrollableList.ScrollUp) handles no-op logic.
+// Rendering is responsive: symbol and disabled bar are centered in actual Bounds().
+type NavButton struct {
+	BaseWidget
+	sym      string
+	onTap    func()
+	isActive func() bool
+}
+
+// NewNavButton creates a NavButton.
+//   - sym: ASCII symbol displayed when active (e.g. "^" or "v")
+//   - onTap: called on every touch, regardless of active state; nil = no-op
+//   - isActive: returns true when button appears enabled; nil → always disabled
+func NewNavButton(sym string, onTap func(), isActive func() bool) *NavButton {
+	if isActive == nil {
+		isActive = func() bool { return false }
+	}
+	b := &NavButton{sym: sym, onTap: onTap, isActive: isActive}
+	b.SetDirty()
+	return b
+}
+
+// HandleTouch fires onTap. Touch routing is handled by the Navigator.
+func (b *NavButton) HandleTouch(_ touch.TouchPoint) bool {
+	if b.onTap != nil {
+		b.onTap()
+	}
+	return true
+}
+
+// Draw renders the button: border + symbol (active) or 8px bar (disabled).
+// All positioning is relative to Bounds(), so the widget works in any container.
+func (b *NavButton) Draw(c *canvas.Canvas) {
+	r := b.Bounds()
+	if r.Empty() {
+		return
+	}
+	c.DrawRect(r, canvas.White, true)
+	c.DrawRect(r, canvas.Black, false)
+
+	cx := r.Min.X + r.Dx()/2
+	cy := r.Min.Y + r.Dy()/2
+
+	if !b.isActive() {
+		// Disabled: 8px-wide horizontal bar (e-ink disabled convention)
+		c.DrawLine(cx-4, cy, cx+4, cy, canvas.Black)
+		return
+	}
+	f := canvas.EmbeddedFont(12)
+	if f == nil {
+		return
+	}
+	// Center symbol in bounds — textWidth() is defined in widgets.go, same package
+	tw := textWidth(b.sym, f)
+	tx := r.Min.X + (r.Dx()-tw)/2
+	ty := r.Min.Y + (r.Dy()-f.LineHeight())/2
+	c.DrawText(tx, ty, b.sym, f, canvas.Black)
+}
