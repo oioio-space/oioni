@@ -1655,13 +1655,12 @@ import (
     "image"
     "github.com/oioio-space/oioni/ui/canvas"
     "github.com/oioio-space/oioni/ui/gui"
-    "github.com/oioio-space/oioni/ui/gui/font"
     wifi "github.com/oioio-space/oioni/system/wifi"
     netconf "github.com/oioio-space/oioni/system/netconf"
 )
 ```
 
-**Note on fonts:** use the same font package as other scenes. Check existing scene files for the import pattern (e.g. `ui/gui` exposes font rendering through canvas directly — look at how `homeListItem.Draw` works in `menu.go`).
+**Note on fonts:** use `canvas.EmbeddedFont(12)` + `cv.DrawText(x, y, text, f, color)` — see `menu.go:homeListItem.Draw` for the exact pattern. There is no `ui/gui/font` sub-package.
 
 - [ ] **Step 3: Update `cmd/oioni/ui/home.go`**
 
