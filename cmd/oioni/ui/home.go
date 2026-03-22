@@ -34,7 +34,6 @@ func NewHomeScene(nav *gui.Navigator) (*gui.Scene, *gui.NetworkStatusBar) {
 
 	return &gui.Scene{
 		Title:   "Home",
-		// nsb, list, upBtn, downBtn at top level for Navigator automatic touch routing by bounds.
-		Widgets: []gui.Widget{content, nsb, list, upBtn, downBtn},
+		Widgets: []gui.Widget{content},
 	}, nsb
 }

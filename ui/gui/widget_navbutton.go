@@ -47,8 +47,8 @@ func (b *NavButton) Draw(c *canvas.Canvas) {
 	if r.Empty() {
 		return
 	}
-	c.DrawRect(r, canvas.White, true)
-	c.DrawRect(r, canvas.Black, false)
+	DrawRoundedRect(c, r, 4, true, canvas.White)
+	DrawRoundedRect(c, r, 4, false, canvas.Black)
 
 	cx := r.Min.X + r.Dx()/2
 	cy := r.Min.Y + r.Dy()/2

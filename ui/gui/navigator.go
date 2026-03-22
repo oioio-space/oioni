@@ -153,14 +153,15 @@ func stopWidgets(widgets []Widget) {
 	}
 }
 
-// teardownScene calls OnLeave, stops all widgets, and prunes debounce state.
+// teardownScene calls OnLeave, stops all widgets, and prunes debounce state
+// for every widget in the tree (not just top-level).
 func (nav *Navigator) teardownScene(s *Scene) {
 	if s.OnLeave != nil {
 		s.OnLeave()
 	}
 	stopWidgets(s.Widgets)
 	nav.mu.Lock()
-	for _, w := range s.Widgets {
+	for _, w := range collectAllWidgets(s.Widgets) {
 		delete(nav.lastFire, w)
 	}
 	nav.mu.Unlock()
@@ -214,7 +215,44 @@ func (nav *Navigator) Render() error {
 	return nav.rm.Render(nav.canvas, nav.stack[len(nav.stack)-1].Widgets)
 }
 
-// handleTouch maps physical touch coords → logical coords, then routes to widgets.
+// findTouchTarget recursively searches the widget tree depth-first for the
+// deepest Touchable whose Bounds contain pt. Children are searched before the
+// container itself, so the most specific widget wins. Widgets are scanned in
+// reverse order so later-listed (visually on top) widgets take priority.
+func findTouchTarget(widgets []Widget, pt image.Point) (Widget, Touchable) {
+	type hasChildren interface{ Children() []Widget }
+	for i := len(widgets) - 1; i >= 0; i-- {
+		w := widgets[i]
+		if !pt.In(w.Bounds()) {
+			continue
+		}
+		if c, ok := w.(hasChildren); ok {
+			if cw, ct := findTouchTarget(c.Children(), pt); ct != nil {
+				return cw, ct
+			}
+		}
+		if t, ok := w.(Touchable); ok {
+			return w, t
+		}
+	}
+	return nil, nil
+}
+
+// collectAllWidgets returns every widget in the tree rooted at widgets.
+func collectAllWidgets(widgets []Widget) []Widget {
+	type hasChildren interface{ Children() []Widget }
+	var all []Widget
+	for _, w := range widgets {
+		all = append(all, w)
+		if c, ok := w.(hasChildren); ok {
+			all = append(all, collectAllWidgets(c.Children())...)
+		}
+	}
+	return all
+}
+
+// handleTouch maps physical touch coords → logical coords, then routes to the
+// deepest Touchable widget in the tree that contains the logical point.
 func (nav *Navigator) handleTouch(pt touch.TouchPoint) {
 	logX := clamp((epd.Height-1)-int(pt.Y), 0, epd.Height-1)
 	logY := clamp((epd.Width-1)-int(pt.X), 0, epd.Width-1)
@@ -224,30 +262,22 @@ func (nav *Navigator) handleTouch(pt touch.TouchPoint) {
 		return
 	}
 	scene := nav.stack[len(nav.stack)-1]
-	for i := len(scene.Widgets) - 1; i >= 0; i-- {
-		w := scene.Widgets[i]
-		if !logPt.In(w.Bounds()) {
-			continue
-		}
-		t, ok := w.(Touchable)
-		if !ok {
-			continue
-		}
-		nav.mu.Lock()
-		last := nav.lastFire[w]
-		now := time.Now()
-		if now.Sub(last) < debounce {
-			nav.mu.Unlock()
-			continue
-		}
-		nav.lastFire[w] = now
-		nav.mu.Unlock()
-
-		logTp := touch.TouchPoint{ID: pt.ID, X: uint16(logPt.X), Y: uint16(logPt.Y), Size: pt.Size}
-		if t.HandleTouch(logTp) {
-			break
-		}
+	w, t := findTouchTarget(scene.Widgets, logPt)
+	if t == nil {
+		return
 	}
+	nav.mu.Lock()
+	last := nav.lastFire[w]
+	now := time.Now()
+	if now.Sub(last) < debounce {
+		nav.mu.Unlock()
+		return
+	}
+	nav.lastFire[w] = now
+	nav.mu.Unlock()
+
+	logTp := touch.TouchPoint{ID: pt.ID, X: uint16(logPt.X), Y: uint16(logPt.Y), Size: pt.Size}
+	t.HandleTouch(logTp)
 }
 
 // Run starts the touch event loop and blocks until ctx is cancelled.

@@ -9,11 +9,11 @@ import (
 )
 
 const (
-	homeRowH     = 25 // 4 rows × 25px = 100px (122px total - 22px NSB)
+	homeRowH     = 33 // 3 rows × 33px = 99px (122px total - 22px NSB, scroll at 4th item)
 	homeNavW     = 50 // nav column width (∧/∨ buttons)
 	homeIconSize = 16 // icon size in px (scaled from 32×32 source)
 	homeIconX    = 4  // left margin for icon
-	homeIconYOff = 4  // (homeRowH - homeIconSize) / 2 — vertical center
+	homeIconYOff = 8  // (homeRowH - homeIconSize) / 2 — vertical center
 	homeTextX    = 24 // homeIconX + homeIconSize + 4 — text start
 )
 
