@@ -58,8 +58,11 @@ test: ## Run unit tests across all modules
 	cd drivers/touch   && go test ./...
 	cd drivers/usbgadget && go test ./...
 	cd system/storage  && go test ./...
+	cd system/netconf  && go test ./...
+	cd system/wifi     && go test ./...
 	cd ui/canvas       && go test ./...
 	cd ui/gui          && go test ./...
+	cd cmd/oioni       && go test ./ui/...
 
 build-modules: ## Compile les modules kernel ARM64 (USB gadget) pour usbgadget
 	podman build --platform linux/arm64 \
@@ -77,7 +80,15 @@ build-imgvol-bins: ## Compile les binaires mkfs statiques ARM64 pour imgvol
 	@ls -lh system/imgvol/bin/mkfs.* 2>/dev/null || echo "(aucun binaire trouvé — vérifier le Dockerfile)"
 	@file system/imgvol/bin/mkfs.* 2>/dev/null || true
 
-build-all: build-modules build-imgvol-bins build ## Build modules + static bins then verify gokrazy compilation
+build-wifi-bins: ## Compile wpa_supplicant static ARM64 binary for system/wifi
+	podman build --platform linux/arm64 \
+	    --output type=local,dest=system/wifi/bin \
+	    system/wifi/build/
+	@echo "Binary generated in system/wifi/bin/:"
+	@ls -lh system/wifi/bin/wpa_supplicant 2>/dev/null || echo "(not found -- check Dockerfile)"
+	@file system/wifi/bin/wpa_supplicant 2>/dev/null || true
+
+build-all: build-modules build-imgvol-bins build-wifi-bins build ## Build modules + static bins then verify gokrazy compilation
 
 .DEFAULT_GOAL := help
-.PHONY: help flash flash-auto list-sd build update ssh logs find-pi test build-modules build-imgvol-bins build-all
+.PHONY: help flash flash-auto list-sd build update ssh logs find-pi test build-modules build-imgvol-bins build-wifi-bins build-all

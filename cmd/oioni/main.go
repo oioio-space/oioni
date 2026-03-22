@@ -20,6 +20,8 @@ import (
 
 	"github.com/oioio-space/oioni/system/imgvol"
 	"github.com/oioio-space/oioni/system/storage"
+	netconf "github.com/oioio-space/oioni/system/netconf"
+	wifi "github.com/oioio-space/oioni/system/wifi"
 	"github.com/oioio-space/oioni/drivers/usbgadget"
 	"github.com/oioio-space/oioni/drivers/usbgadget/functions"
 
@@ -149,7 +151,20 @@ func main() {
 	// ── E-ink display ─────────────────────────────────────────────────────────
 	var ep *epaperState
 	if *withEPaper {
-		ep = startEPaper(ctx, nil, nil)
+		netconfMgr := netconf.New("/perm/netconf")
+		if err := netconfMgr.Start(ctx); err != nil {
+			log.Printf("netconf: %v", err)
+		}
+		wifiMgr := wifi.New(wifi.Config{
+			WpaSupplicantBin: "/user/wpa_supplicant",
+			ConfDir:          "/perm/wifi",
+			CtrlDir:          "/var/run/wpa_supplicant",
+			Iface:            "wlan0",
+		})
+		if err := wifiMgr.Start(ctx); err != nil {
+			log.Printf("wifi: %v", err)
+		}
+		ep = startEPaper(ctx, wifiMgr, netconfMgr)
 		if ep != nil {
 			defer ep.Close()
 		}
