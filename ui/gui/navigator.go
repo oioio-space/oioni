@@ -255,12 +255,14 @@ func collectAllWidgets(widgets []Widget) []Widget {
 // to the deepest Touchable widget in the tree containing the logical point.
 //
 // GT1151 coordinate mapping (empirically verified on Waveshare 2.13" Touch HAT):
-//   logX = pt.Y  (GT1151 Y → logical horizontal axis, range 0..epd.Height-1)
-//   logY = pt.X  (GT1151 X → logical vertical axis,   range 0..epd.Width-1)
-// No axis inversion: the touch chip reports coordinates that match the canvas
-// logical space directly once axes are swapped.
+//   logX = (epd.Height-1) - pt.Y  (GT1151 Y → logical horizontal axis, inverted)
+//   logY = pt.X                   (GT1151 X → logical vertical axis)
+//
+// The X axis is inverted because the canvas Rot90 renders logX=0 at the physical
+// right column while the display hardware shows it on the visual left. The GT1151
+// reports visual-left as small pt.Y, so we invert to align with logical coords.
 func (nav *Navigator) handleTouch(pt touch.TouchPoint) {
-	logX := clamp(int(pt.Y), 0, epd.Height-1)
+	logX := clamp(epd.Height-1-int(pt.Y), 0, epd.Height-1)
 	logY := clamp(int(pt.X), 0, epd.Width-1)
 	logPt := image.Pt(logX, logY)
 
