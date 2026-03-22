@@ -71,6 +71,13 @@ func (l *ScrollableList) ScrollDown() {
 	}
 }
 
+// SetItems replaces the list contents and resets scroll to top.
+func (l *ScrollableList) SetItems(items []ListItem) {
+	l.items = items
+	l.offset = 0
+	l.SetDirty()
+}
+
 // HandleTouch routes the touch to the correct item by row index.
 func (l *ScrollableList) HandleTouch(pt touch.TouchPoint) bool {
 	wb := l.Bounds()

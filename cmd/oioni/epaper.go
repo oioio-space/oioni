@@ -6,10 +6,12 @@ import (
 	"log"
 	"time"
 
+	oioniui "github.com/oioio-space/oioni/cmd/oioni/ui"
 	"github.com/oioio-space/oioni/drivers/epd"
 	"github.com/oioio-space/oioni/drivers/touch"
+	"github.com/oioio-space/oioni/system/netconf"
+	"github.com/oioio-space/oioni/system/wifi"
 	"github.com/oioio-space/oioni/ui/gui"
-	oioniui "github.com/oioio-space/oioni/cmd/oioni/ui"
 )
 
 const (
@@ -33,7 +35,7 @@ type epaperState struct {
 	cancel context.CancelFunc
 }
 
-func startEPaper(ctx context.Context) *epaperState {
+func startEPaper(ctx context.Context, wifiMgr *wifi.Manager, netconfMgr *netconf.Manager) *epaperState {
 	d, err := epd.New(epd.Config{
 		SPIDevice: epdSPIDevice,
 		SPISpeed:  epdSPISpeed,
@@ -70,7 +72,7 @@ func startEPaper(ctx context.Context) *epaperState {
 
 	nav := gui.NewNavigatorWithIdle(d, idleTimeout)
 
-	home, nsb := oioniui.NewHomeScene(nav)
+	home, nsb := oioniui.NewHomeScene(nav, wifiMgr, netconfMgr)
 	if err := nav.Push(home); err != nil {
 		log.Printf("epaper: initial render failed: %v", err)
 		cancel()

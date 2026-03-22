@@ -149,7 +149,7 @@ func main() {
 	// ── E-ink display ─────────────────────────────────────────────────────────
 	var ep *epaperState
 	if *withEPaper {
-		ep = startEPaper(ctx)
+		ep = startEPaper(ctx, nil, nil)
 		if ep != nil {
 			defer ep.Close()
 		}

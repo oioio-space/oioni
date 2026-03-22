@@ -5,22 +5,24 @@ import (
 	"image"
 
 	"github.com/oioio-space/oioni/drivers/epd"
+	"github.com/oioio-space/oioni/system/netconf"
+	"github.com/oioio-space/oioni/system/wifi"
 	"github.com/oioio-space/oioni/ui/gui"
 )
 
 // NewHomeScene builds the home screen: 22px NetworkStatusBar + scrollable menu.
 // Returns the scene and the NetworkStatusBar so the caller can call SetInterfaces/SetTools.
-func NewHomeScene(nav *gui.Navigator) (*gui.Scene, *gui.NetworkStatusBar) {
+func NewHomeScene(nav *gui.Navigator, wifiMgr *wifi.Manager, netconfMgr *netconf.Manager) (*gui.Scene, *gui.NetworkStatusBar) {
 	nsb := gui.NewNetworkStatusBar(nav)
 
 	// NOTE: items are *homeListItem (pointer to struct implementing gui.ListItem).
 	// Do NOT use struct literals on gui.ListItem — it is an interface, not a struct.
 	items := []gui.ListItem{
-		&homeListItem{name: "Config", icon: Icons.Config, onTap: func() { nav.Dispatch(func() { nav.Push(NewConfigScene(nav)) }) }}, //nolint:errcheck
+		&homeListItem{name: "Config", icon: Icons.Config, onTap: func() { nav.Dispatch(func() { nav.Push(NewConfigScene(nav, wifiMgr, netconfMgr)) }) }}, //nolint:errcheck
 		&homeListItem{name: "System", icon: Icons.System, onTap: func() { nav.Dispatch(func() { nav.Push(NewSystemScene(nav)) }) }}, //nolint:errcheck
 		&homeListItem{name: "Attack", icon: Icons.Attack, onTap: func() { nav.Dispatch(func() { nav.Push(NewAttackScene(nav)) }) }}, //nolint:errcheck
-		&homeListItem{name: "DFIR",   icon: Icons.DFIR,   onTap: func() { nav.Dispatch(func() { nav.Push(NewDFIRScene(nav)) }) }}, //nolint:errcheck
-		&homeListItem{name: "Info",   icon: Icons.Info,   onTap: func() { nav.Dispatch(func() { nav.Push(NewInfoScene(nav)) }) }}, //nolint:errcheck
+		&homeListItem{name: "DFIR", icon: Icons.DFIR, onTap: func() { nav.Dispatch(func() { nav.Push(NewDFIRScene(nav)) }) }},       //nolint:errcheck
+		&homeListItem{name: "Info", icon: Icons.Info, onTap: func() { nav.Dispatch(func() { nav.Push(NewInfoScene(nav)) }) }},       //nolint:errcheck
 	}
 
 	list := gui.NewScrollableList(items, homeRowH)

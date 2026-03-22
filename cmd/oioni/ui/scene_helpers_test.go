@@ -25,7 +25,7 @@ func TestCategoryScene_SingleTopLevelWidget(t *testing.T) {
 		name string
 		fn   func(*gui.Navigator) *gui.Scene
 	}{
-		{"Config", NewConfigScene},
+		{"Config", func(nav *gui.Navigator) *gui.Scene { return NewConfigScene(nav, nil, nil) }},
 		{"System", NewSystemScene},
 		{"Attack", NewAttackScene},
 		{"DFIR", NewDFIRScene},
@@ -46,7 +46,7 @@ func TestCategoryScene_Title(t *testing.T) {
 		fn    func(*gui.Navigator) *gui.Scene
 		title string
 	}{
-		{NewConfigScene, "Config"},
+		{func(nav *gui.Navigator) *gui.Scene { return NewConfigScene(nav, nil, nil) }, "Config"},
 		{NewSystemScene, "System"},
 		{NewAttackScene, "Attack"},
 		{NewDFIRScene, "DFIR"},
