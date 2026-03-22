@@ -6,7 +6,9 @@ use (
 	./drivers/touch
 	./drivers/usbgadget
 	./system/imgvol
+	./system/netconf
 	./system/storage
+	./system/wifi
 	./tools
 	./ui/canvas
 	./ui/gui

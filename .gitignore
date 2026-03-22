@@ -9,6 +9,7 @@ oioio/builddir/
 *.gaf
 
 # Compiled binaries (keep mkfs.* and *.ko — they're pre-built for offline use)
+system/wifi/bin/
 /oioni
 hello/hello
 cmd/oioni/oioni
