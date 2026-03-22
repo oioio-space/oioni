@@ -184,3 +184,14 @@ func TestScrollableList_DrawEmptyBounds(t *testing.T) {
 	c := canvas.New(epd.Width, epd.Height, canvas.Rot90)
 	l.Draw(c)
 }
+
+func TestScrollableList_TapAboveWidget_DoesNotFireItem0(t *testing.T) {
+	l, stubs := newTestList5()
+	setBoundsMenu(l) // wb.Min.Y = 22
+	// pt.Y = 21 → just above the widget. In Go: (21-22)/25 = -1/25 = 0,
+	// which would pass row >= 0 without the explicit bounds check.
+	l.HandleTouch(touch.TouchPoint{X: 100, Y: 21})
+	if stubs[0].tapped {
+		t.Error("item 0 was tapped for a touch above the widget bounds")
+	}
+}

@@ -75,6 +75,11 @@ func (l *ScrollableList) ScrollDown() {
 func (l *ScrollableList) HandleTouch(pt touch.TouchPoint) bool {
 	wb := l.Bounds()
 	if l.RowH <= 0 {
+		return false // Bug 3 fix: return false, not true
+	}
+	// Explicit bounds check — Go's integer division truncates toward zero,
+	// so (negative) / RowH = 0, which would pass the row >= 0 guard incorrectly.
+	if int(pt.Y) < wb.Min.Y || int(pt.Y) >= wb.Max.Y {
 		return true
 	}
 	row := (int(pt.Y) - wb.Min.Y) / l.RowH
@@ -109,7 +114,8 @@ func (l *ScrollableList) Draw(c *canvas.Canvas) {
 		l.items[idx].Draw(c, rowBounds)
 		// 2px separator between rows (not after last visible row, not if no next item)
 		if i < vis-1 && idx+1 < len(l.items) {
-			sep := rowBounds.Max.Y - 2
+			// Draw separator straddling the row boundary: last pixel of row i + first pixel of row i+1.
+			sep := rowBounds.Max.Y - 1
 			c.DrawLine(wb.Min.X, sep, wb.Max.X, sep, canvas.Black)
 			c.DrawLine(wb.Min.X, sep+1, wb.Max.X, sep+1, canvas.Black)
 		}
