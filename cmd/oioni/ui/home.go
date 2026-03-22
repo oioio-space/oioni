@@ -30,12 +30,13 @@ func NewHomeScene(nav *gui.Navigator) (*gui.Scene, *gui.NetworkStatusBar) {
 		gui.SidebarButton{Icon: Icons.Down, OnTap: list.ScrollDown},
 	)
 
-	menuRow := gui.NewHBox(gui.Expand(list), gui.FixedSize(sidebar, homeNavW))
-	content := gui.NewVBox(gui.FixedSize(nsb, 22), gui.Expand(menuRow))
-	content.SetBounds(image.Rect(0, 0, epd.Height, epd.Width))
+	// Sidebar at full screen height: HBox at root level, NSB only inside the content column.
+	content := gui.NewVBox(gui.FixedSize(nsb, 22), gui.Expand(list))
+	root := gui.NewHBox(gui.Expand(content), gui.FixedSize(sidebar, homeNavW))
+	root.SetBounds(image.Rect(0, 0, epd.Height, epd.Width))
 
 	return &gui.Scene{
 		Title:   "Home",
-		Widgets: []gui.Widget{content},
+		Widgets: []gui.Widget{root},
 	}, nsb
 }

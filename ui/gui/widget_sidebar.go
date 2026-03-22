@@ -91,7 +91,7 @@ func (s *ActionSidebar) HandleTouch(pt touch.TouchPoint) bool {
 	return false
 }
 
-// Draw renders the sidebar: white background, left separator line, and equally distributed icon buttons.
+// Draw renders the sidebar: white background, left separator line, and rounded icon buttons.
 func (s *ActionSidebar) Draw(c *canvas.Canvas) {
 	b := s.Bounds()
 	if b.Empty() {
@@ -111,32 +111,34 @@ func (s *ActionSidebar) Draw(c *canvas.Canvas) {
 
 	heights := s.cellHeights(b.Dy())
 	cellY := b.Min.Y
+	const pad = 2
 	for i, btn := range s.buttons {
 		h := heights[i]
-		cellRect := image.Rect(b.Min.X+2, cellY, b.Max.X, cellY+h)
-
-		// 2px separator between buttons (not before first).
+		// Extra top padding between buttons instead of explicit separator lines.
+		topPad := pad
 		if i > 0 {
-			c.DrawLine(b.Min.X+2, cellY, b.Max.X-1, cellY, canvas.Black)
-			c.DrawLine(b.Min.X+2, cellY+1, b.Max.X-1, cellY+1, canvas.Black)
+			topPad = pad + pad
+		}
+		btnRect := image.Rect(b.Min.X+2+pad, cellY+topPad, b.Max.X-pad, cellY+h-pad)
+		if !btnRect.Empty() {
+			DrawRoundedRect(c, btnRect, 4, true, canvas.White)
+			DrawRoundedRect(c, btnRect, 4, false, canvas.Black)
 		}
 
 		if _, ih := btn.Icon.Size(); ih > 0 {
-			// Icon centered in cell
-			iconSize := 24
-			iconX := cellRect.Min.X + (cellRect.Dx()-iconSize)/2
-			iconY := cellRect.Min.Y + (cellRect.Dy()-iconSize)/2
+			iconSize := 20
+			iconX := btnRect.Min.X + (btnRect.Dx()-iconSize)/2
+			iconY := btnRect.Min.Y + (btnRect.Dy()-iconSize)/2
 			iconRect := image.Rect(iconX, iconY, iconX+iconSize, iconY+iconSize)
 			if !iconRect.Empty() {
 				btn.Icon.Draw(c, iconRect)
 			}
 		} else if btn.Label != "" {
-			// Text label centered in cell
 			f := canvas.EmbeddedFont(12)
 			if f != nil {
 				tw := textWidth(btn.Label, f)
-				lx := cellRect.Min.X + (cellRect.Dx()-tw)/2
-				ly := cellRect.Min.Y + (cellRect.Dy()-f.LineHeight())/2
+				lx := btnRect.Min.X + (btnRect.Dx()-tw)/2
+				ly := btnRect.Min.Y + (btnRect.Dy()-f.LineHeight())/2
 				c.DrawText(lx, ly, btn.Label, f, canvas.Black)
 			}
 		}
