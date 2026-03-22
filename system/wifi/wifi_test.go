@@ -80,7 +80,9 @@ func TestManager_Connect_Save(t *testing.T) {
 func TestManager_RemoveSaved(t *testing.T) {
 	dir := t.TempDir()
 	conf := &confManager{dir: dir}
-	conf.write([]savedNetwork{{SSID: "OldNet", PSK: "pw"}})
+	if err := conf.write([]savedNetwork{{SSID: "OldNet", PSK: "pw"}}); err != nil {
+		t.Fatal(err)
+	}
 
 	wpa := &fakeWpa{}
 	m := newTestManager(t, wpa)

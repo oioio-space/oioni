@@ -172,7 +172,10 @@ func (m *Manager) Connect(ssid, psk string, save bool) error {
 		}
 	}
 	if save {
-		existing, _ := m.conf.read()
+		existing, err := m.conf.read()
+		if err != nil {
+			return fmt.Errorf("read saved networks: %w", err)
+		}
 		// Remove duplicate if re-saving same SSID
 		var filtered []savedNetwork
 		for _, n := range existing {
@@ -200,7 +203,34 @@ func (m *Manager) Status() (Status, error) {
 	if err != nil {
 		return Status{}, err
 	}
-	return parseWpaStatus(raw), nil
+	st := parseWpaStatus(raw)
+	st.Enabled = m.isEnabled()
+	return st, nil
+}
+
+// isEnabled checks rfkill state. Returns true if WiFi is not soft-blocked.
+func (m *Manager) isEnabled() bool {
+	entries, err := os.ReadDir("/sys/class/rfkill")
+	if err != nil {
+		return true // assume enabled if rfkill not readable
+	}
+	for _, e := range entries {
+		typePath := filepath.Join("/sys/class/rfkill", e.Name(), "type")
+		data, err := os.ReadFile(typePath)
+		if err != nil {
+			continue
+		}
+		if strings.TrimSpace(string(data)) != "wlan" {
+			continue
+		}
+		softPath := filepath.Join("/sys/class/rfkill", e.Name(), "soft")
+		data, err = os.ReadFile(softPath)
+		if err != nil {
+			return true
+		}
+		return strings.TrimSpace(string(data)) == "0"
+	}
+	return true // no rfkill entry = enabled
 }
 
 // SavedNetworks returns the list of persisted networks.
