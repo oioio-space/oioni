@@ -82,6 +82,8 @@ func (c *confManager) read() ([]savedNetwork, error) {
 // migrateIfNeeded imports the gokrazy/wifi legacy config into wpa_supplicant.conf.
 // gokrazy/wifi deployed credentials to /etc/wifi.json via ExtraFilePaths.
 // The file uses either "psk" or "passphrase" as the password key.
+// A marker file in c.dir/.migrated prevents re-running on subsequent boots
+// (we cannot rename /etc/wifi.json because /etc is squashfs read-only).
 func (c *confManager) migrateIfNeeded() error {
 	legacyPath := c.legacyPath
 	if legacyPath == "" {
@@ -93,6 +95,11 @@ func (c *confManager) migrateIfNeeded() error {
 	}
 	if err != nil {
 		return err
+	}
+	// Check marker in /perm (writable) — /etc is squashfs read-only.
+	markerPath := filepath.Join(c.dir, ".migrated")
+	if _, err := os.Stat(markerPath); err == nil {
+		return nil // already migrated
 	}
 	var legacy struct {
 		SSID       string `json:"ssid"`
@@ -114,5 +121,9 @@ func (c *confManager) migrateIfNeeded() error {
 	if err := c.write(existing); err != nil {
 		return err
 	}
-	return os.Rename(legacyPath, legacyPath+".migrated")
+	// Write marker so migration doesn't repeat on next boot.
+	if err := os.MkdirAll(c.dir, 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(markerPath, []byte(legacyPath+"\n"), 0600)
 }

@@ -32,12 +32,13 @@ func TestMigrateWifiJSON(t *testing.T) {
 	if err := cfg.migrateIfNeeded(); err != nil {
 		t.Fatal(err)
 	}
-	// Legacy file renamed
-	if _, err := os.Stat(legacy); !os.IsNotExist(err) {
-		t.Error("expected wifi.json to be renamed after migration")
+	// Marker file created in conf dir (not renaming /etc/wifi.json which is read-only squashfs)
+	if _, err := os.Stat(filepath.Join(dir, ".migrated")); err != nil {
+		t.Error("expected .migrated marker to exist in conf dir")
 	}
-	if _, err := os.Stat(legacy + ".migrated"); err != nil {
-		t.Error("expected wifi.json.migrated to exist")
+	// Legacy file still present (we can't rename it in production; in test it stays)
+	if _, err := os.Stat(legacy); err != nil {
+		t.Error("legacy wifi.json should still exist (marker approach, not rename)")
 	}
 	// conf should now contain OldNet
 	nets, err := cfg.read()
@@ -46,6 +47,18 @@ func TestMigrateWifiJSON(t *testing.T) {
 	}
 	if len(nets) != 1 || nets[0].SSID != "OldNet" || nets[0].PSK != "oldpass" {
 		t.Fatalf("unexpected networks after migration: %+v", nets)
+	}
+
+	// Second call must be idempotent (no duplicate entry)
+	if err := cfg.migrateIfNeeded(); err != nil {
+		t.Fatal(err)
+	}
+	nets, err = cfg.read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nets) != 1 {
+		t.Fatalf("expected 1 network after second migrate, got %d: %+v", len(nets), nets)
 	}
 }
 
