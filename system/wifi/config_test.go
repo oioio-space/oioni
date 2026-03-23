@@ -28,7 +28,7 @@ func TestMigrateWifiJSON(t *testing.T) {
 	legacy := filepath.Join(dir, "wifi.json")
 	os.WriteFile(legacy, []byte(`{"ssid":"OldNet","passphrase":"oldpass"}`), 0600)
 
-	cfg := &confManager{dir: dir}
+	cfg := &confManager{dir: dir, legacyPath: legacy}
 	if err := cfg.migrateIfNeeded(); err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +44,26 @@ func TestMigrateWifiJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(nets) != 1 || nets[0].SSID != "OldNet" {
+	if len(nets) != 1 || nets[0].SSID != "OldNet" || nets[0].PSK != "oldpass" {
 		t.Fatalf("unexpected networks after migration: %+v", nets)
+	}
+}
+
+func TestMigrateWifiJSONPskKey(t *testing.T) {
+	dir := t.TempDir()
+	// wifi.json with "psk" key (actual oioio format)
+	legacy := filepath.Join(dir, "wifi.json")
+	os.WriteFile(legacy, []byte(`{"ssid":"MyNet","psk":"mypassword"}`), 0600)
+
+	cfg := &confManager{dir: dir, legacyPath: legacy}
+	if err := cfg.migrateIfNeeded(); err != nil {
+		t.Fatal(err)
+	}
+	nets, err := cfg.read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nets) != 1 || nets[0].SSID != "MyNet" || nets[0].PSK != "mypassword" {
+		t.Fatalf("unexpected networks: %+v", nets)
 	}
 }
