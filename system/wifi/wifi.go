@@ -66,6 +66,11 @@ func (m *Manager) Start(ctx context.Context) error {
 		_ = err // non-fatal — log in caller
 	}
 
+	// Ensure ctrl dir exists on tmpfs (created fresh on every boot).
+	if err := os.MkdirAll(m.cfg.CtrlDir, 0755); err != nil {
+		return fmt.Errorf("wpa_supplicant ctrl dir: %w", err)
+	}
+
 	args := []string{
 		"-i", m.cfg.Iface,
 		"-C", m.cfg.CtrlDir,
