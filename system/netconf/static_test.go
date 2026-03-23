@@ -26,6 +26,7 @@ func (f *fakeNetlink) AddrAdd(link netlink.Link, addr *netlink.Addr) error {
 	f.addedAddrs = append(f.addedAddrs, addr.String())
 	return nil
 }
+func (f *fakeNetlink) LinkSetUp(link netlink.Link) error                   { return nil }
 func (f *fakeNetlink) AddrDel(link netlink.Link, addr *netlink.Addr) error { return nil }
 func (f *fakeNetlink) RouteAdd(route *netlink.Route) error {
 	f.addedRoutes = append(f.addedRoutes, route.Gw.String())

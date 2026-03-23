@@ -15,6 +15,9 @@ func applyStatic(nl netlinkClient, iface, cidr, gateway string) error {
 	if err != nil {
 		return fmt.Errorf("link %s: %w", iface, err)
 	}
+	if err := nl.LinkSetUp(link); err != nil {
+		return fmt.Errorf("link up %s: %w", iface, err)
+	}
 	addr, err := netlink.ParseAddr(cidr)
 	if err != nil {
 		return fmt.Errorf("parse addr %s: %w", cidr, err)
