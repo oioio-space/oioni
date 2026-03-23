@@ -71,6 +71,23 @@ func (m *Manager) Start(ctx context.Context) error {
 		return fmt.Errorf("wpa_supplicant ctrl dir: %w", err)
 	}
 
+	// Wait for the wireless interface to appear (kernel module may not be ready yet).
+	ifacePath := "/sys/class/net/" + m.cfg.Iface
+	ifaceDeadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(ifaceDeadline) {
+		if _, err := os.Stat(ifacePath); err == nil {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
+	if _, err := os.Stat(ifacePath); err != nil {
+		return fmt.Errorf("interface %s not ready after 10s", m.cfg.Iface)
+	}
+
 	args := []string{
 		"-i", m.cfg.Iface,
 		"-C", m.cfg.CtrlDir,

@@ -156,13 +156,15 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// ── Network config (always started so USB gadget can use it too) ──────────
+	netconfMgr := netconf.New("/perm/netconf")
+	if err := netconfMgr.Start(ctx); err != nil {
+		log.Printf("netconf: %v", err)
+	}
+
 	// ── E-ink display ─────────────────────────────────────────────────────────
 	var ep *epaperState
 	if *withEPaper {
-		netconfMgr := netconf.New("/perm/netconf")
-		if err := netconfMgr.Start(ctx); err != nil {
-			log.Printf("netconf: %v", err)
-		}
 		wifiMgr := wifi.New(wifi.Config{
 			WpaSupplicantBin: "/user/wpa_supplicant",
 			ConfDir:          "/perm/wifi",
@@ -205,6 +207,17 @@ func main() {
 					log.Printf("RNDIS → %s", ifname)
 				}
 				go logStats(ctx, rndis, ecm)
+			}
+			if ecm != nil {
+				if ifname, err := ecm.IfName(); err == nil {
+					log.Printf("ECM → %s", ifname)
+					if err := netconfMgr.Apply(ifname, netconf.IfaceCfg{
+						Mode: netconf.ModeStatic,
+						IP:   "10.42.0.1/24",
+					}); err != nil {
+						log.Printf("ECM netconf: %v", err)
+					}
+				}
 			}
 			defer func() {
 				if err := g.Disable(); err != nil {
