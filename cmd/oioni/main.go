@@ -11,6 +11,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -29,7 +30,14 @@ import (
 )
 
 func main() {
-	log.SetFlags(log.Ltime)
+	log.SetFlags(log.Ldate | log.Ltime)
+
+	// Mirror logs to /perm so boot failures are readable without WiFi.
+	if f, err := os.OpenFile("/perm/oioni-boot.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		defer f.Close()
+		log.SetOutput(io.MultiWriter(os.Stderr, f))
+		log.Printf("=== oioni boot %s ===", time.Now().Format(time.RFC3339))
+	}
 
 	// Gadget flags
 	withRNDIS := flag.Bool("rndis", false, "enable RNDIS network function (3 EP)")
