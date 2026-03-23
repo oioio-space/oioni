@@ -1,8 +1,11 @@
+github.com/jonboulle/clockwork v0.4.0 h1:p4Cf1aMWXnXAUh8lVfewRBx1zaTSYKrKMF2g3ST4RZ4=
 golang.org/x/image v0.37.0 h1:ZiRjArKI8GwxZOoEtUfhrBtaCN+4b/7709dlT6SSnQA=
 golang.org/x/image v0.37.0/go.mod h1:/3f6vaXC+6CEanU4KJxbcUZyEePbyKbaLoDOe4ehFYY=
 golang.org/x/sys v0.42.0 h1:omrd2nAlyT5ESRdCLYdm3+fMfNFE/+Rf4bDIQImRJeo=
 golang.org/x/sys v0.42.0/go.mod h1:4GL1E5IUh+htKOUEOaiffhrAeqysfVGipDYzABqnCmw=
 golang.org/x/text v0.35.0 h1:JOVx6vVDFokkpaq1AEptVzLTpDe9KGpj5tR4/X+ybL8=
 golang.org/x/text v0.35.0/go.mod h1:khi/HExzZJ2pGnjenulevKNX1W67CUy0AsXcNubPGCA=
+periph.io/x/conn/v3 v3.7.2 h1:qt9dE6XGP5ljbFnCKRJ9OOCoiOyBGlw7JZgoi72zZ1s=
+periph.io/x/host/v3 v3.8.5 h1:g4g5xE1XZtDiGl1UAJaUur1aT7uNiFLMkyMEiZ7IHII=
 rsc.io/qr v0.2.0 h1:6vBLea5/NRMVTz8V66gipeLycZMl/+UlFmk8DvqQ6WY=
 rsc.io/qr v0.2.0/go.mod h1:IF+uZjkb9fqyeF/4tlBoynqmQxUoPfWEKh921coOuXs=

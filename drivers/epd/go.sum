@@ -1,3 +1,4 @@
+github.com/jonboulle/clockwork v0.4.0 h1:p4Cf1aMWXnXAUh8lVfewRBx1zaTSYKrKMF2g3ST4RZ4=
 golang.org/x/sys v0.42.0 h1:omrd2nAlyT5ESRdCLYdm3+fMfNFE/+Rf4bDIQImRJeo=
 golang.org/x/sys v0.42.0/go.mod h1:4GL1E5IUh+htKOUEOaiffhrAeqysfVGipDYzABqnCmw=
 periph.io/x/conn/v3 v3.7.2 h1:qt9dE6XGP5ljbFnCKRJ9OOCoiOyBGlw7JZgoi72zZ1s=
