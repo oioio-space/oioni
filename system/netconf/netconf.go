@@ -20,7 +20,8 @@ type IfaceStatus struct {
 type Manager struct {
 	nl  netlinkClient
 	cfg *ifaceConfig
-	mu  sync.Mutex // guards net.DefaultResolver writes
+	ctx context.Context // set in Start; used by DHCP goroutines
+	mu  sync.Mutex      // guards net.DefaultResolver writes
 }
 
 // New creates a Manager with configuration stored in confDir.
@@ -32,10 +33,16 @@ func New(confDir string) *Manager {
 }
 
 // Start applies saved configuration for all known interfaces.
+// Interfaces not in config default to DHCP.
 func (m *Manager) Start(ctx context.Context) error {
+	m.ctx = ctx
 	saved, err := m.cfg.read()
 	if err != nil {
 		return fmt.Errorf("netconf load: %w", err)
+	}
+	// Default: DHCP on wlan0 if not explicitly configured.
+	if _, ok := saved["wlan0"]; !ok {
+		saved["wlan0"] = IfaceCfg{Mode: ModeDHCP}
 	}
 	for iface, cfg := range saved {
 		if err := m.applyNow(iface, cfg); err != nil {
@@ -113,7 +120,13 @@ func (m *Manager) applyNow(iface string, cfg IfaceCfg) error {
 		}
 		return nil
 	case ModeDHCP:
-		// DHCP runs in a goroutine; Start just records the intent.
+		if m.ctx != nil {
+			go func() {
+				if _, err := runDHCP(m.ctx, m.nl, iface); err != nil && m.ctx.Err() == nil {
+					_ = err // caller should log; non-fatal
+				}
+			}()
+		}
 		return nil
 	default:
 		return fmt.Errorf("unknown mode: %s", cfg.Mode)
