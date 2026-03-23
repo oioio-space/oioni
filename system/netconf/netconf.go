@@ -7,6 +7,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"time"
 )
 
 // IfaceStatus holds the runtime IP state of an interface.
@@ -122,8 +123,18 @@ func (m *Manager) applyNow(iface string, cfg IfaceCfg) error {
 	case ModeDHCP:
 		if m.ctx != nil {
 			go func() {
-				if _, err := runDHCP(m.ctx, m.nl, iface); err != nil && m.ctx.Err() == nil {
-					_ = err // caller should log; non-fatal
+				// Retry until DHCP succeeds (wpa_supplicant may not have
+				// associated yet when this goroutine first runs).
+				for {
+					_, err := runDHCP(m.ctx, m.nl, iface)
+					if err == nil {
+						return
+					}
+					select {
+					case <-m.ctx.Done():
+						return
+					case <-time.After(5 * time.Second):
+					}
 				}
 			}()
 		}
