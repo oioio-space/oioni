@@ -73,7 +73,7 @@ func (m *Manager) Start(ctx context.Context) error {
 
 	// Wait for the wireless interface to appear (kernel module may not be ready yet).
 	ifacePath := "/sys/class/net/" + m.cfg.Iface
-	ifaceDeadline := time.Now().Add(10 * time.Second)
+	ifaceDeadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(ifaceDeadline) {
 		if _, err := os.Stat(ifacePath); err == nil {
 			break
@@ -81,11 +81,19 @@ func (m *Manager) Start(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(200 * time.Millisecond):
+		case <-time.After(500 * time.Millisecond):
 		}
 	}
 	if _, err := os.Stat(ifacePath); err != nil {
-		return fmt.Errorf("interface %s not ready after 10s", m.cfg.Iface)
+		// Log all present interfaces to help diagnose driver issues.
+		if entries, rerr := os.ReadDir("/sys/class/net"); rerr == nil {
+			names := make([]string, 0, len(entries))
+			for _, e := range entries {
+				names = append(names, e.Name())
+			}
+			return fmt.Errorf("interface %s not ready after 20s (present: %s)", m.cfg.Iface, strings.Join(names, ","))
+		}
+		return fmt.Errorf("interface %s not ready after 20s", m.cfg.Iface)
 	}
 
 	args := []string{

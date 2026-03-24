@@ -209,14 +209,28 @@ func main() {
 				go logStats(ctx, rndis, ecm)
 			}
 			if ecm != nil {
-				if ifname, err := ecm.IfName(); err == nil {
-					log.Printf("ECM → %s", ifname)
-					if err := netconfMgr.Apply(ifname, netconf.IfaceCfg{
+				// Wait up to 5s for the kernel to assign the ECM interface name.
+				// g.Enable() returns before configfs ifname is written.
+				var ecmIface string
+				ecmDeadline := time.Now().Add(5 * time.Second)
+				for time.Now().Before(ecmDeadline) {
+					if name, err := ecm.IfName(); err == nil &&
+						name != "" && !strings.Contains(name, "unnamed") {
+						ecmIface = name
+						break
+					}
+					time.Sleep(100 * time.Millisecond)
+				}
+				if ecmIface != "" {
+					log.Printf("ECM → %s", ecmIface)
+					if err := netconfMgr.Apply(ecmIface, netconf.IfaceCfg{
 						Mode: netconf.ModeStatic,
 						IP:   "10.42.0.1/24",
 					}); err != nil {
 						log.Printf("ECM netconf: %v", err)
 					}
+				} else {
+					log.Printf("ECM: interface name not ready after 5s")
 				}
 			}
 			defer func() {
