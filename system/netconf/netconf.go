@@ -41,10 +41,7 @@ func (m *Manager) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("netconf load: %w", err)
 	}
-	// Default: DHCP on wlan0 if not explicitly configured.
-	if _, ok := saved["wlan0"]; !ok {
-		saved["wlan0"] = IfaceCfg{Mode: ModeDHCP}
-	}
+	// Note: wlan0 DHCP is handled by github.com/gokrazy/wifi, not by this manager.
 	for iface, cfg := range saved {
 		if err := m.applyNow(iface, cfg); err != nil {
 			_ = err // non-fatal per spec: log in caller
