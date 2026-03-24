@@ -2,8 +2,10 @@
 package netconf
 
 import (
+	"errors"
 	"fmt"
 	"net"
+	"syscall"
 
 	"github.com/vishvananda/netlink"
 )
@@ -23,7 +25,10 @@ func applyStatic(nl netlinkClient, iface, cidr, gateway string) error {
 		return fmt.Errorf("parse addr %s: %w", cidr, err)
 	}
 	if err := nl.AddrAdd(link, addr); err != nil {
-		return fmt.Errorf("addr add: %w", err)
+		// EEXIST means the address is already configured — treat as success.
+		if !errors.Is(err, syscall.EEXIST) {
+			return fmt.Errorf("addr add: %w", err)
+		}
 	}
 	if gateway != "" {
 		gw := net.ParseIP(gateway)

@@ -240,6 +240,25 @@ func main() {
 					} else {
 						log.Printf("ECM OK: 10.42.0.1/24 sur %s — SSH: ssh root@10.42.0.1", ecmIface)
 						go startUDHCPD(ctx, ecmIface)
+						// USB re-enumeration can briefly bring eth0 DOWN, removing the
+						// static IP. Re-apply every 3s to stay configured.
+						go func(iface string) {
+							t := time.NewTicker(3 * time.Second)
+							defer t.Stop()
+							for {
+								select {
+								case <-ctx.Done():
+									return
+								case <-t.C:
+									if err := netconfMgr.ApplyEphemeral(iface, netconf.IfaceCfg{
+										Mode: netconf.ModeStatic,
+										IP:   "10.42.0.1/24",
+									}); err != nil {
+										log.Printf("ECM keepalive: %v", err)
+									}
+								}
+							}
+						}(ecmIface)
 					}
 				} else {
 					log.Printf("ECM: interface name not ready after 5s")
