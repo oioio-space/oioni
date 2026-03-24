@@ -19,6 +19,28 @@ type NetStats struct {
 	TxErrors  uint64
 }
 
+// findIfaceByMAC returns the name of the network interface whose hardware
+// address matches mac (case-insensitive). Used as fallback when configfs
+// ifname is not updated by the kernel.
+func findIfaceByMAC(mac string) (string, error) {
+	entries, err := os.ReadDir("/sys/class/net")
+	if err != nil {
+		return "", err
+	}
+	want := strings.ToLower(mac)
+	for _, e := range entries {
+		addrPath := "/sys/class/net/" + e.Name() + "/address"
+		b, err := os.ReadFile(addrPath)
+		if err != nil {
+			continue
+		}
+		if strings.ToLower(strings.TrimSpace(string(b))) == want {
+			return e.Name(), nil
+		}
+	}
+	return "", fmt.Errorf("no interface with MAC %s", mac)
+}
+
 // readIfName reads the interface name assigned by the kernel from configfs.
 func readIfName(configDir string) (string, error) {
 	b, err := os.ReadFile(configDir + "/ifname")

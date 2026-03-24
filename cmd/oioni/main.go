@@ -33,11 +33,15 @@ func main() {
 	log.SetFlags(log.Ldate | log.Ltime)
 
 	// Mirror logs to /perm so boot failures are readable without WiFi.
+	var logFile *os.File
 	if f, err := os.OpenFile("/perm/oioni-boot.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		logFile = f
 		defer f.Close()
 		log.SetOutput(io.MultiWriter(os.Stderr, f))
 		log.Printf("=== oioni boot %s ===", time.Now().Format(time.RFC3339))
 	}
+	// Copy relevant kernel messages (USB gadget, brcmfmac) to boot log.
+	go logKernelMessages(logFile)
 
 	// Gadget flags
 	withRNDIS := flag.Bool("rndis", false, "enable RNDIS network function (3 EP)")
@@ -228,6 +232,9 @@ func main() {
 						IP:   "10.42.0.1/24",
 					}); err != nil {
 						log.Printf("ECM netconf: %v", err)
+					} else {
+						log.Printf("ECM OK: 10.42.0.1/24 sur %s — SSH: ssh root@10.42.0.1", ecmIface)
+						go startUDHCPD(ctx, ecmIface)
 					}
 				} else {
 					log.Printf("ECM: interface name not ready after 5s")

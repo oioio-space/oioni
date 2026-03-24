@@ -3,6 +3,7 @@ package functions
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 type RNDISFunc struct {
@@ -43,9 +44,23 @@ func RNDIS(opts ...RNDISOption) *RNDISFunc {
 func (f *RNDISFunc) TypeName() string     { return "rndis" }
 func (f *RNDISFunc) InstanceName() string { return f.instance }
 
-// IfName returns the kernel network interface name on the gadget side (e.g. "usb0").
-// Only valid after the gadget is enabled.
-func (f *RNDISFunc) IfName() (string, error) { return readIfName(f.configDir) }
+// IfName returns the kernel network interface name on the gadget side.
+// Falls back to MAC-based scan if configfs ifname is not updated.
+func (f *RNDISFunc) IfName() (string, error) {
+	name, err := readIfName(f.configDir)
+	if err == nil && name != "" && !strings.Contains(name, "unnamed") {
+		return name, nil
+	}
+	if f.devAddr != "" {
+		if iface, err2 := findIfaceByMAC(f.devAddr); err2 == nil {
+			return iface, nil
+		}
+	}
+	if err != nil {
+		return "", err
+	}
+	return "", fmt.Errorf("ifname not yet assigned (got %q)", name)
+}
 
 // ReadStats returns the current network counters for this interface.
 func (f *RNDISFunc) ReadStats() (NetStats, error) {

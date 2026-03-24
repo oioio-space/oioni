@@ -3,6 +3,7 @@ package functions
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 type ECMFunc struct {
@@ -43,7 +44,24 @@ func (f *ECMFunc) TypeName() string     { return "ecm" }
 func (f *ECMFunc) InstanceName() string { return f.instance }
 
 // IfName returns the kernel network interface name on the gadget side.
-func (f *ECMFunc) IfName() (string, error) { return readIfName(f.configDir) }
+// It first tries the configfs ifname attribute, then falls back to scanning
+// /sys/class/net by MAC address (works around kernels where ifname stays
+// "unnamed net_device" after gadget bind).
+func (f *ECMFunc) IfName() (string, error) {
+	name, err := readIfName(f.configDir)
+	if err == nil && name != "" && !strings.Contains(name, "unnamed") {
+		return name, nil
+	}
+	if f.devAddr != "" {
+		if iface, err2 := findIfaceByMAC(f.devAddr); err2 == nil {
+			return iface, nil
+		}
+	}
+	if err != nil {
+		return "", err
+	}
+	return "", fmt.Errorf("ifname not yet assigned (got %q)", name)
+}
 
 // ReadStats returns the current network counters for this interface.
 func (f *ECMFunc) ReadStats() (NetStats, error) {
