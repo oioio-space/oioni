@@ -162,6 +162,9 @@ func main() {
 
 	// ── Network config (always started so USB gadget can use it too) ──────────
 	netconfMgr := netconf.New("/perm/netconf")
+	// Remove stale USB gadget interface entries (e.g. ECM in DHCP mode from a
+	// previous session) before Start() so no DHCP goroutine fights our static ECM config.
+	netconfMgr.PurgeNonWlan()
 	if err := netconfMgr.Start(ctx); err != nil {
 		log.Printf("netconf: %v", err)
 	}
@@ -227,7 +230,7 @@ func main() {
 				}
 				if ecmIface != "" {
 					log.Printf("ECM → %s", ecmIface)
-					if err := netconfMgr.Apply(ecmIface, netconf.IfaceCfg{
+					if err := netconfMgr.ApplyEphemeral(ecmIface, netconf.IfaceCfg{
 						Mode: netconf.ModeStatic,
 						IP:   "10.42.0.1/24",
 					}); err != nil {

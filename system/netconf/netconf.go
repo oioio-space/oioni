@@ -99,6 +99,29 @@ func (m *Manager) Apply(iface string, cfg IfaceCfg) error {
 	return m.cfg.write(saved)
 }
 
+// ApplyEphemeral configures an interface without persisting to disk.
+// Use for transient interfaces (USB gadget ECM) that must not be saved.
+func (m *Manager) ApplyEphemeral(iface string, cfg IfaceCfg) error {
+	return m.applyNow(iface, cfg)
+}
+
+// PurgeNonWlan removes non-wireless interface entries from the saved config.
+// Call before Start() to clean up stale USB gadget interface entries that
+// would otherwise cause a DHCP goroutine to fight with our static ECM config.
+func (m *Manager) PurgeNonWlan() {
+	saved, err := m.cfg.read()
+	if err != nil {
+		return
+	}
+	filtered := make(map[string]IfaceCfg)
+	for iface, cfg := range saved {
+		if strings.HasPrefix(iface, "wlan") || strings.HasPrefix(iface, "eth") {
+			filtered[iface] = cfg
+		}
+	}
+	_ = m.cfg.write(filtered)
+}
+
 // Status returns the current IP state for iface.
 func (m *Manager) Status(iface string) (IfaceStatus, error) {
 	link, err := m.nl.LinkByName(iface)
