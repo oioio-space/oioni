@@ -14,6 +14,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"os/exec"
 	"os/signal"
 	"strings"
 	"syscall"
@@ -239,6 +240,12 @@ func main() {
 						log.Printf("ECM netconf: %v", err)
 					} else {
 						log.Printf("ECM OK: 10.42.0.1/24 sur %s — SSH: ssh root@10.42.0.1", ecmIface)
+						// Diagnostic: verify the IP is actually in the kernel.
+						if out, err2 := exec.Command(busybox, "ip", "addr", "show", ecmIface).Output(); err2 == nil {
+							log.Printf("ECM addr: %s", strings.TrimSpace(string(out)))
+						} else {
+							log.Printf("ECM addr read: %v", err2)
+						}
 						go startUDHCPD(ctx, ecmIface)
 						// USB re-enumeration can briefly bring eth0 DOWN, removing the
 						// static IP. Re-apply every 3s to stay configured.
@@ -255,6 +262,9 @@ func main() {
 										IP:   "10.42.0.1/24",
 									}); err != nil {
 										log.Printf("ECM keepalive: %v", err)
+									} else {
+										out, _ := exec.Command(busybox, "ip", "addr", "show", iface).Output()
+										log.Printf("ECM keepalive addr: %s", strings.TrimSpace(string(out)))
 									}
 								}
 							}
