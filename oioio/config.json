@@ -2,7 +2,7 @@
 	"Hostname": "oioio",
 	"Update": {
 		"Hostname": "192.168.0.33",
-		"HTTPPassword": "CHANGE_ME"
+		"HTTPPassword": "wxcvbn.000"
 	},
 	"Environment": [
 		"GOOS=linux",
@@ -12,39 +12,44 @@
 		"github.com/gokrazy/fbstatus",
 		"github.com/gokrazy/serial-busybox",
 		"github.com/gokrazy/breakglass",
-		"github.com/gokrazy/wifi",
 		"github.com/gokrazy/mkfs",
-		"github.com/oioio-space/oioni/cmd/oioni"
+		"github.com/oioio-space/oioni/cmd/oioni",
+		"github.com/gokrazy/iptables",
+		"github.com/gokrazy/nsenter",
+		"github.com/gokrazy/podman",
+		"github.com/greenpau/cni-plugins/cmd/cni-nftables-portmap",
+		"github.com/greenpau/cni-plugins/cmd/cni-nftables-firewall"
 	],
 	"PackageConfig": {
+		"github.com/gokrazy/breakglass": {
+			"ExtraFileContents": {
+				"/etc/breakglass.authorized_keys": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMTRUHZxjWLlN4Vrg9CEdZCrwMvvaJ8dOpSzna/Nr/K6 oioio-pizero\n"
+			},
+			"CommandLineFlags": [
+				"-authorized_keys=/etc/breakglass.authorized_keys"
+			]
+		},
 		"github.com/gokrazy/gokrazy/cmd/randomd": {
 			"ExtraFileContents": {
 				"/etc/machine-id": "819d2606b0db419c9a5bdddb9ca8daf1\n"
 			}
 		},
-		"github.com/gokrazy/wifi": {
-			"ExtraFilePaths": {
-				"/etc/wifi.json": "wifi.json"
-			}
-		},
-		"github.com/gokrazy/breakglass": {
-			"CommandLineFlags": [
-				"-authorized_keys=/etc/breakglass.authorized_keys"
-			],
-			"ExtraFileContents": {
-				"/etc/breakglass.authorized_keys": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMTRUHZxjWLlN4Vrg9CEdZCrwMvvaJ8dOpSzna/Nr/K6 oioio-pizero\n"
-			}
-		},
 		"github.com/oioio-space/oioni/cmd/oioni": {
 			"CommandLineFlags": [
-				"-epaper"
-			]
+				"-epaper",
+				"-ecm"
+			],
+			"ExtraFilePaths": {
+				"/usr/share/oioni/impacket-arm64.tar.gz": "/tmp/impacket-arm64.tar.gz",
+				"/user/wpa_supplicant": "../system/wifi/bin/wpa_supplicant"
+			}
 		}
 	},
+	"SerialConsole": "disabled",
 	"BootloaderExtraLines": [
 		"dtoverlay=dwc2,dr_mode=peripheral",
 		"dtparam=spi=on",
 		"dtparam=i2c_arm=on"
 	],
-	"SerialConsole": "disabled"
+	"InternalCompatibilityFlags": {}
 }
