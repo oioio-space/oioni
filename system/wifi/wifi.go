@@ -2,12 +2,15 @@
 package wifi
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 // Config holds the runtime configuration for the Manager.
@@ -59,11 +62,43 @@ func New(cfg Config) *Manager {
 	}
 }
 
+// loadModule loads a kernel module by path relative to /lib/modules/<release>/.
+// Ignores EEXIST/EBUSY (already loaded) and ENODEV/ENOENT (not present).
+func loadModule(mod string) error {
+	var uts unix.Utsname
+	if err := unix.Uname(&uts); err != nil {
+		return err
+	}
+	release := string(uts.Release[:bytes.IndexByte(uts.Release[:], 0)])
+	f, err := os.Open(filepath.Join("/lib/modules", release, mod))
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if err := unix.FinitModule(int(f.Fd()), "", 0); err != nil {
+		if err != unix.EEXIST && err != unix.EBUSY && err != unix.ENODEV && err != unix.ENOENT {
+			return fmt.Errorf("FinitModule(%v): %v", mod, err)
+		}
+	}
+	return nil
+}
+
 // Start launches wpa_supplicant, polls until the control socket appears, and
 // connects to it. Also runs wifi.json migration. Non-fatal on error.
 func (m *Manager) Start(ctx context.Context) error {
 	if err := m.conf.migrateIfNeeded(); err != nil {
 		_ = err // non-fatal — log in caller
+	}
+
+	// Load brcmfmac kernel modules (firmware must be in /lib/firmware/brcm/).
+	for _, mod := range []string{
+		"kernel/drivers/net/wireless/broadcom/brcm80211/brcmutil/brcmutil.ko",
+		"kernel/drivers/net/wireless/broadcom/brcm80211/brcmfmac/brcmfmac.ko",
+		"kernel/drivers/net/wireless/broadcom/brcm80211/brcmfmac/wcc/brcmfmac-wcc.ko",
+	} {
+		if err := loadModule(mod); err != nil {
+			_ = err // non-fatal: module may already be present or not applicable
+		}
 	}
 
 	// Ensure ctrl dir exists on tmpfs (created fresh on every boot).
