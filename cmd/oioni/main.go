@@ -263,13 +263,15 @@ func main() {
 									}); err != nil {
 										log.Printf("ECM keepalive: %v", err)
 									} else {
-										// Log hw type (should be 1=ARPHRD_ETHER for ARP to work)
-										hwType, _ := os.ReadFile("/sys/class/net/" + iface + "/type")
-										log.Printf("ECM keepalive hw_type=%s", strings.TrimSpace(string(hwType)))
-										// Gratuitous ARP: populate PC's ARP cache without waiting
-										// for the Pi to respond to ARP requests.
+										// ECM interface has hw_type=14 (not ARPHRD_ETHER=1), so the
+										// kernel won't do ARP automatically on either side.
+										// Fix: set permanent static neighbor so Pi can reach PC,
+										// and send gratuitous ARP so PC can reach Pi.
+										exec.Command(busybox, "ip", "neigh", "replace",
+											"10.42.0.2", "lladdr", "02:00:00:cc:dd:01",
+											"nud", "permanent", "dev", iface).Run() //nolint
 										exec.Command(busybox, "arping", "-A", "-I", iface, "-c", "1", "10.42.0.1").Run() //nolint
-									}
+										}
 								}
 							}
 						}(ecmIface)
