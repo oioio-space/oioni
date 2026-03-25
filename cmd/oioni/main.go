@@ -14,6 +14,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"net"
 	"os/exec"
 	"os/signal"
 	"strings"
@@ -28,6 +29,7 @@ import (
 	"github.com/oioio-space/oioni/drivers/usbgadget/functions"
 
 	"github.com/spf13/afero"
+	"github.com/vishvananda/netlink"
 )
 
 func main() {
@@ -265,12 +267,24 @@ func main() {
 									} else {
 										// ECM interface has hw_type=14 (not ARPHRD_ETHER=1), so the
 										// kernel won't do ARP automatically on either side.
-										// Fix: set permanent static neighbor so Pi can reach PC,
-										// and send gratuitous ARP so PC can reach Pi.
-										exec.Command(busybox, "ip", "neigh", "replace",
-											"10.42.0.2", "lladdr", "02:00:00:cc:dd:01",
-											"nud", "permanent", "dev", iface).Run() //nolint
-										exec.Command(busybox, "arping", "-A", "-I", iface, "-c", "1", "10.42.0.1").Run() //nolint
+										// Fix: permanent static neighbor (Pi→PC) via netlink,
+										// and gratuitous ARP (PC→Pi) via arping.
+										if link, err := netlink.LinkByName(iface); err != nil {
+											log.Printf("ECM neigh link: %v", err)
+										} else {
+											pcMAC, _ := net.ParseMAC("02:00:00:cc:dd:01")
+											if err := netlink.NeighSet(&netlink.Neigh{
+												LinkIndex:    link.Attrs().Index,
+												IP:           net.ParseIP("10.42.0.2"),
+												HardwareAddr: pcMAC,
+												State:        netlink.NUD_PERMANENT,
+											}); err != nil {
+												log.Printf("ECM neigh set: %v", err)
+											}
+										}
+										if out, err := exec.Command(busybox, "arping", "-A", "-I", iface, "-c", "1", "10.42.0.1").CombinedOutput(); err != nil {
+											log.Printf("ECM arping: %v: %s", err, strings.TrimSpace(string(out)))
+										}
 										}
 								}
 							}
