@@ -1,7 +1,7 @@
 {
 	"Hostname": "oioio",
 	"Update": {
-		"Hostname": "192.168.0.33",
+		"Hostname": "10.42.0.1",
 		"HTTPPassword": "wxcvbn.000"
 	},
 	"Environment": [
@@ -41,7 +41,8 @@
 			],
 			"ExtraFilePaths": {
 				"/usr/share/oioni/impacket-arm64.tar.gz": "/tmp/impacket-arm64.tar.gz",
-				"/user/wpa_supplicant": "../system/wifi/bin/wpa_supplicant"
+				"/user/wpa_supplicant": "../system/wifi/bin/wpa_supplicant",
+				"/": "../system/wifi/firmware"
 			}
 		}
 	},
