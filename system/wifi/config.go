@@ -55,7 +55,7 @@ func (c *confManager) read() ([]savedNetwork, error) {
 	}
 	var nets []savedNetwork
 	var cur *savedNetwork
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "network={" {
 			cur = &savedNetwork{}

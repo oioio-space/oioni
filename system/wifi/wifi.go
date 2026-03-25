@@ -1,4 +1,20 @@
-// system/wifi/wifi.go — WiFi manager public API
+// Package wifi manages WiFi on gokrazy via wpa_supplicant.
+//
+// Usage:
+//
+//	mgr := wifi.New(wifi.Config{
+//	    WpaSupplicantBin: "/user/wpa_supplicant",
+//	    ConfDir:          "/perm/wifi",
+//	    CtrlDir:          "/var/run/wpa_supplicant",
+//	    Iface:            "wlan0",
+//	})
+//	if err := mgr.Start(ctx); err != nil { log.Printf("wifi: %v", err) }
+//	mgr.Connect("MyNet", "passphrase", true)
+//
+// Start loads the brcmfmac kernel modules, starts wpa_supplicant in daemon
+// mode, and connects to the control socket. Saved credentials live in
+// ConfDir/wpa_supplicant.conf; a one-time migration from /etc/wifi.json
+// (gokrazy/wifi legacy) runs on first boot.
 package wifi
 
 import (
@@ -12,6 +28,16 @@ import (
 
 	"golang.org/x/sys/unix"
 )
+
+// kernelRelease caches the running kernel version string for loadModule.
+// Computed once at package init — unix.Uname returns immutable data.
+var kernelRelease = func() string {
+	var uts unix.Utsname
+	if err := unix.Uname(&uts); err != nil {
+		return ""
+	}
+	return string(uts.Release[:bytes.IndexByte(uts.Release[:], 0)])
+}()
 
 // Config holds the runtime configuration for the Manager.
 type Config struct {
@@ -62,15 +88,10 @@ func New(cfg Config) *Manager {
 	}
 }
 
-// loadModule loads a kernel module by path relative to /lib/modules/<release>/.
-// Ignores EEXIST/EBUSY (already loaded) and ENODEV/ENOENT (not present).
+// loadModule loads a kernel module by path relative to /lib/modules/<kernelRelease>/.
+// Ignores EEXIST/EBUSY (already loaded) and ENODEV/ENOENT (not present/applicable).
 func loadModule(mod string) error {
-	var uts unix.Utsname
-	if err := unix.Uname(&uts); err != nil {
-		return err
-	}
-	release := string(uts.Release[:bytes.IndexByte(uts.Release[:], 0)])
-	f, err := os.Open(filepath.Join("/lib/modules", release, mod))
+	f, err := os.Open(filepath.Join("/lib/modules", kernelRelease, mod))
 	if err != nil {
 		return err
 	}
@@ -81,6 +102,27 @@ func loadModule(mod string) error {
 		}
 	}
 	return nil
+}
+
+// wlanRfkillSoftPath returns the sysfs "soft" file path for the first wlan
+// rfkill entry. Used by SetEnabled and isEnabled to avoid scanning twice.
+func wlanRfkillSoftPath() (string, error) {
+	entries, err := os.ReadDir("/sys/class/rfkill")
+	if err != nil {
+		return "", fmt.Errorf("rfkill: %w", err)
+	}
+	for _, e := range entries {
+		typePath := filepath.Join("/sys/class/rfkill", e.Name(), "type")
+		data, err := os.ReadFile(typePath)
+		if err != nil {
+			continue
+		}
+		if strings.TrimSpace(string(data)) != "wlan" {
+			continue
+		}
+		return filepath.Join("/sys/class/rfkill", e.Name(), "soft"), nil
+	}
+	return "", fmt.Errorf("no wlan rfkill entry found")
 }
 
 // Start launches wpa_supplicant, polls until the control socket appears, and
@@ -162,30 +204,18 @@ func (m *Manager) Start(ctx context.Context) error {
 
 // SetEnabled enables or disables WiFi via /sys/class/rfkill/ sysfs.
 func (m *Manager) SetEnabled(enabled bool) error {
-	entries, err := os.ReadDir("/sys/class/rfkill")
+	softPath, err := wlanRfkillSoftPath()
 	if err != nil {
-		return fmt.Errorf("rfkill: %w", err)
+		return err
 	}
 	val := "0"
 	if !enabled {
 		val = "1"
 	}
-	for _, e := range entries {
-		typePath := filepath.Join("/sys/class/rfkill", e.Name(), "type")
-		data, err := os.ReadFile(typePath)
-		if err != nil {
-			continue
-		}
-		if strings.TrimSpace(string(data)) != "wlan" {
-			continue
-		}
-		softPath := filepath.Join("/sys/class/rfkill", e.Name(), "soft")
-		if err := os.WriteFile(softPath, []byte(val), 0644); err != nil {
-			return fmt.Errorf("rfkill soft: %w", err)
-		}
-		return nil
+	if err := os.WriteFile(softPath, []byte(val), 0644); err != nil {
+		return fmt.Errorf("rfkill soft: %w", err)
 	}
-	return fmt.Errorf("no wlan rfkill entry found")
+	return nil
 }
 
 // Scan triggers a wifi scan and waits ~2s for results. Call in a goroutine.
@@ -275,27 +305,15 @@ func (m *Manager) Status() (Status, error) {
 
 // isEnabled checks rfkill state. Returns true if WiFi is not soft-blocked.
 func (m *Manager) isEnabled() bool {
-	entries, err := os.ReadDir("/sys/class/rfkill")
+	softPath, err := wlanRfkillSoftPath()
 	if err != nil {
-		return true // assume enabled if rfkill not readable
+		return true // assume enabled if rfkill not found
 	}
-	for _, e := range entries {
-		typePath := filepath.Join("/sys/class/rfkill", e.Name(), "type")
-		data, err := os.ReadFile(typePath)
-		if err != nil {
-			continue
-		}
-		if strings.TrimSpace(string(data)) != "wlan" {
-			continue
-		}
-		softPath := filepath.Join("/sys/class/rfkill", e.Name(), "soft")
-		data, err = os.ReadFile(softPath)
-		if err != nil {
-			return true
-		}
-		return strings.TrimSpace(string(data)) == "0"
+	data, err := os.ReadFile(softPath)
+	if err != nil {
+		return true
 	}
-	return true // no rfkill entry = enabled
+	return strings.TrimSpace(string(data)) == "0"
 }
 
 // SavedNetworks returns the list of persisted networks.

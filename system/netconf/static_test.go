@@ -32,8 +32,9 @@ func (f *fakeNetlink) RouteAdd(route *netlink.Route) error {
 	f.addedRoutes = append(f.addedRoutes, route.Gw.String())
 	return nil
 }
-func (f *fakeNetlink) RouteDel(route *netlink.Route) error { return nil }
-func (f *fakeNetlink) LinkList() ([]netlink.Link, error)   { return f.links, nil }
+func (f *fakeNetlink) AddrList(_ netlink.Link, _ int) ([]netlink.Addr, error) { return nil, nil }
+func (f *fakeNetlink) RouteDel(route *netlink.Route) error                    { return nil }
+func (f *fakeNetlink) LinkList() ([]netlink.Link, error)                      { return f.links, nil }
 
 func TestApplyStatic(t *testing.T) {
 	nl := &fakeNetlink{}

@@ -1,4 +1,9 @@
-// system/netconf/netconf.go — per-interface IP configuration manager
+// Package netconf configures network interfaces on gokrazy via netlink.
+//
+// Saved configurations live in confDir/interfaces.json (JSON map of iface→IfaceCfg).
+// Call PurgeNonWlan() before Start() to evict stale USB gadget entries, then
+// Start() applies all saved configs. Use ApplyEphemeral() for transient
+// interfaces that must not survive a reboot (e.g. USB ECM gadget).
 package netconf
 
 import (
@@ -125,9 +130,12 @@ func (m *Manager) Status(iface string) (IfaceStatus, error) {
 	if err != nil {
 		return IfaceStatus{}, err
 	}
-	_ = link
-	// IP state would be read from netlink AddrList — simplified for now.
-	return IfaceStatus{Up: true}, nil
+	up := link.Attrs().Flags&net.FlagUp != 0
+	addrs, err := m.nl.AddrList(link, netlinkFamilyV4)
+	if err != nil || len(addrs) == 0 {
+		return IfaceStatus{Up: up}, nil
+	}
+	return IfaceStatus{IP: addrs[0].IPNet.String(), Up: up}, nil
 }
 
 func (m *Manager) applyNow(iface string, cfg IfaceCfg) error {
@@ -165,7 +173,8 @@ func (m *Manager) applyNow(iface string, cfg IfaceCfg) error {
 }
 
 // setDNS overrides net.DefaultResolver to use the given DNS servers.
-// Protected by mu so concurrent Apply calls don't race.
+// All servers are tried in order; the first reachable one wins.
+// Protected by mu so concurrent Apply calls don't race on the global resolver.
 func (m *Manager) setDNS(servers []string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -176,8 +185,16 @@ func (m *Manager) setDNS(servers []string) {
 	net.DefaultResolver = &net.Resolver{
 		PreferGo: true,
 		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-			d := net.Dialer{}
-			return d.DialContext(ctx, "udp", addrs[0])
+			d := &net.Dialer{}
+			var lastErr error
+			for _, addr := range addrs {
+				conn, err := d.DialContext(ctx, "udp", addr)
+				if err == nil {
+					return conn, nil
+				}
+				lastErr = err
+			}
+			return nil, lastErr
 		},
 	}
 }

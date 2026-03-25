@@ -40,7 +40,11 @@ func applyStatic(nl netlinkClient, iface, cidr, gateway string) error {
 			Gw:        gw,
 		}
 		if err := nl.RouteAdd(route); err != nil {
-			return fmt.Errorf("route add: %w", err)
+			// EEXIST means the route is already configured — treat as success,
+			// consistent with AddrAdd handling above.
+			if !errors.Is(err, syscall.EEXIST) {
+				return fmt.Errorf("route add: %w", err)
+			}
 		}
 	}
 	return nil

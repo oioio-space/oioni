@@ -77,7 +77,7 @@ func parseScanResults(raw string) []Network {
 // parseWpaStatus parses the STATUS command response (key=value lines).
 func parseWpaStatus(raw string) Status {
 	var st Status
-	for _, line := range strings.Split(raw, "\n") {
+	for line := range strings.SplitSeq(raw, "\n") {
 		k, v, ok := strings.Cut(line, "=")
 		if !ok {
 			continue
