@@ -37,11 +37,11 @@ type APStatus struct {
 // APManager manages the hostapd process and DHCP server on uap0.
 type APManager struct {
 	cfg        APConfig
-	hostapdBin string
-	iwBin      string
-	ipBin      string
-	conf       *confManager
-	proc       processRunner
+	hostapdBin   string
+	iwBin        string
+	conf         *confManager
+	proc         processRunner
+	assignIPFn   func(iface, cidr string) error // injectable for tests
 
 	dhcp    *apDHCPServer
 	process *os.Process // running hostapd; nil when stopped
@@ -49,14 +49,14 @@ type APManager struct {
 }
 
 // newAPManager creates an APManager. Called by Manager.SetMode.
-func newAPManager(cfg APConfig, conf *confManager, proc processRunner, hostapdBin, iwBin, ipBin string) *APManager {
+func newAPManager(cfg APConfig, conf *confManager, proc processRunner, hostapdBin, iwBin string) *APManager {
 	return &APManager{
 		cfg:        cfg,
 		hostapdBin: hostapdBin,
 		iwBin:      iwBin,
-		ipBin:      ipBin,
 		conf:       conf,
 		proc:       proc,
+		assignIPFn: assignIP,
 	}
 }
 
@@ -65,7 +65,7 @@ func (a *APManager) Start(ctx context.Context) error {
 	if err := createVirtualAP(a.proc, a.iwBin, "wlan0", "uap0"); err != nil {
 		return fmt.Errorf("ap start: %w", err)
 	}
-	if err := assignIP(a.proc, a.ipBin, "uap0", a.cfg.IP); err != nil {
+	if err := a.assignIPFn("uap0", a.cfg.IP); err != nil {
 		_ = deleteVirtualAP(a.proc, a.iwBin, "uap0")
 		return fmt.Errorf("ap start: %w", err)
 	}

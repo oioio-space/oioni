@@ -66,6 +66,13 @@ func main() {
 	// E-ink display + touch
 	withEPaper := flag.Bool("epaper", false, "enable e-ink display and touch controller")
 
+	// WiFi AP mode flags (persistent config in /perm/wifi/)
+	wifiAPEnable  := flag.Bool("wifi-ap", false, "enable WiFi AP mode (creates uap0 virtual interface)")
+	wifiAPSSID    := flag.String("wifi-ap-ssid", "", "WiFi AP SSID (saved to /perm/wifi/apconfig.json)")
+	wifiAPPSK     := flag.String("wifi-ap-psk", "", "WiFi AP passphrase (empty = open network)")
+	wifiAPChannel := flag.Int("wifi-ap-channel", 0, "WiFi AP channel (0 = keep saved, default 6)")
+	wifiAPIP      := flag.String("wifi-ap-ip", "", "WiFi AP IP CIDR (empty = keep saved, default 192.168.4.1/24)")
+
 	// Impacket tools (test integration)
 	imp := defineImpacketFlags()
 
@@ -173,17 +180,52 @@ func main() {
 	}
 
 	// ── E-ink display ─────────────────────────────────────────────────────────
+	// ── WiFi manager (STA + optional AP) ─────────────────────────────────────
+	wifiMgr := wifi.New(wifi.Config{
+		WpaSupplicantBin: "/user/wpa_supplicant",
+		HostapdBin:       "/user/hostapd",
+		IwBin:            "/user/iw",
+		ConfDir:          "/perm/wifi",
+		CtrlDir:          "/var/run/wpa_supplicant",
+		Iface:            "wlan0",
+	})
+	if err := wifiMgr.Start(ctx); err != nil {
+		log.Printf("wifi: %v", err)
+	}
+
+	// Apply WiFi AP config if any flags were provided.
+	if *wifiAPSSID != "" || *wifiAPChannel != 0 || *wifiAPIP != "" {
+		cfg, _ := wifiMgr.GetAPConfig()
+		if *wifiAPSSID != "" {
+			cfg.SSID = *wifiAPSSID
+		}
+		if *wifiAPPSK != "" {
+			cfg.PSK = *wifiAPPSK
+		}
+		if *wifiAPChannel != 0 {
+			cfg.Channel = *wifiAPChannel
+		}
+		if *wifiAPIP != "" {
+			cfg.IP = *wifiAPIP
+		}
+		if err := wifiMgr.SetAPConfig(cfg); err != nil {
+			log.Printf("wifi-ap config: %v", err)
+		} else {
+			log.Printf("wifi-ap: config saved (ssid=%q channel=%d ip=%s)", cfg.SSID, cfg.Channel, cfg.IP)
+		}
+	}
+
+	// Enable AP mode if requested.
+	if *wifiAPEnable {
+		if err := wifiMgr.SetMode(ctx, wifi.Mode{STA: true, AP: true}); err != nil {
+			log.Printf("wifi-ap enable: %v", err)
+		} else {
+			log.Printf("wifi-ap: AP mode enabled")
+		}
+	}
+
 	var ep *epaperState
 	if *withEPaper {
-		wifiMgr := wifi.New(wifi.Config{
-			WpaSupplicantBin: "/user/wpa_supplicant",
-			ConfDir:          "/perm/wifi",
-			CtrlDir:          "/var/run/wpa_supplicant",
-			Iface:            "wlan0",
-		})
-		if err := wifiMgr.Start(ctx); err != nil {
-			log.Printf("wifi: %v", err)
-		}
 		ep = startEPaper(ctx, wifiMgr, netconfMgr)
 		if ep != nil {
 			defer ep.Close()

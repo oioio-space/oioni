@@ -42,6 +42,8 @@
 			"ExtraFilePaths": {
 				"/usr/share/oioni/impacket-arm64.tar.gz": "/tmp/impacket-arm64.tar.gz",
 				"/user/wpa_supplicant": "../system/wifi/bin/wpa_supplicant",
+				"/user/hostapd": "../system/wifi/bin/hostapd",
+				"/user/iw": "../system/wifi/bin/iw",
 				"/": "../system/wifi/firmware"
 			}
 		}

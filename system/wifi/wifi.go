@@ -59,7 +59,6 @@ type Config struct {
 	WpaSupplicantBin string // e.g. "/user/wpa_supplicant"
 	HostapdBin       string // e.g. "/user/hostapd" (AP mode)
 	IwBin            string // e.g. "/user/iw" (AP mode — virtual interface creation)
-	IpBin            string // e.g. "/user/ip" (AP mode — IP assignment)
 	ConfDir          string // e.g. "/perm/wifi"
 	CtrlDir          string // e.g. "/var/run/wpa_supplicant"
 	Iface            string // e.g. "wlan0"
@@ -418,7 +417,7 @@ func (m *Manager) SetMode(ctx context.Context, mode Mode) error {
 		if cfg.SSID == "" {
 			return fmt.Errorf("SetMode: AP config has no SSID — call SetAPConfig first")
 		}
-		apMgr := newAPManager(cfg, m.conf, m.proc, m.cfg.HostapdBin, m.cfg.IwBin, m.cfg.IpBin)
+		apMgr := newAPManager(cfg, m.conf, m.proc, m.cfg.HostapdBin, m.cfg.IwBin)
 		if err := apMgr.Start(ctx); err != nil {
 			return fmt.Errorf("SetMode: start AP: %w", err)
 		}

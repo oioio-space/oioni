@@ -14,10 +14,20 @@ require (
 	github.com/oioio-space/oioni/ui/canvas v0.0.0-00010101000000-000000000000
 	github.com/oioio-space/oioni/ui/gui v0.0.0-00010101000000-000000000000
 	github.com/spf13/afero v1.15.0
+	github.com/vishvananda/netlink v1.3.1
 )
 
 require (
+	github.com/insomniacslk/dhcp v0.0.0-20260220084031-5adc3eb26f91 // indirect
+	github.com/josharian/native v1.1.0 // indirect
+	github.com/mdlayher/packet v1.1.2 // indirect
+	github.com/mdlayher/socket v0.4.1 // indirect
+	github.com/pierrec/lz4/v4 v4.1.14 // indirect
+	github.com/u-root/uio v0.0.0-20230220225925-ffce2a382923 // indirect
+	github.com/vishvananda/netns v0.0.5 // indirect
 	golang.org/x/image v0.37.0 // indirect
+	golang.org/x/net v0.38.0 // indirect
+	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/text v0.35.0 // indirect
 	periph.io/x/conn/v3 v3.7.2 // indirect

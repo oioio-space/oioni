@@ -74,13 +74,11 @@ func TestDeleteVirtualAP(t *testing.T) {
 	}
 }
 
-func TestAssignIP(t *testing.T) {
-	proc := &fakeAPProcess{}
-	if err := assignIP(proc, "/user/ip", "uap0", "192.168.4.1/24"); err != nil {
-		t.Fatal(err)
-	}
-	if len(proc.calls) != 2 {
-		t.Fatalf("expected 2 calls (addr add + link set), got %d", len(proc.calls))
+func TestAssignIP_BadIface(t *testing.T) {
+	// assignIP uses netlink; on dev machine, "uap0" won't exist → expect error, not panic.
+	err := assignIP("uap0-notexist", "192.168.4.1/24")
+	if err == nil {
+		t.Error("expected error for non-existent interface")
 	}
 }
 
@@ -97,7 +95,8 @@ func newTestAPManager(t *testing.T) (*APManager, *fakeAPProcess) {
 		DNS:     []string{"8.8.8.8"},
 	}
 	conf := &confManager{dir: dir}
-	ap := newAPManager(cfg, conf, proc, "/user/hostapd", "/user/iw", "/user/ip")
+	ap := newAPManager(cfg, conf, proc, "/user/hostapd", "/user/iw")
+	ap.assignIPFn = func(_, _ string) error { return nil } // no netlink in tests
 	return ap, proc
 }
 
@@ -111,10 +110,10 @@ func TestAPManager_Start_CallsSubprocesses(t *testing.T) {
 	}
 	defer ap.Stop()
 
-	// Expect: createVirtualAP, assignIP (×2), StartProcess (hostapd)
-	// = at least 4 calls
-	if len(proc.calls) < 4 {
-		t.Errorf("expected ≥4 subprocess calls, got %d: %v", len(proc.calls), proc.calls)
+	// Expect: createVirtualAP (iw), StartProcess (hostapd)
+	// assignIP now uses netlink directly (no subprocess)
+	if len(proc.calls) < 2 {
+		t.Errorf("expected ≥2 subprocess calls, got %d: %v", len(proc.calls), proc.calls)
 	}
 }
 

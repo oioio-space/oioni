@@ -1,7 +1,12 @@
 // system/wifi/vif.go — virtual interface management for AP mode
 package wifi
 
-import "fmt"
+import (
+	"fmt"
+	"net"
+
+	"github.com/vishvananda/netlink"
+)
 
 // createVirtualAP creates a virtual AP interface named name on parent interface
 // using "iw dev <parent> interface add <name> type __ap".
@@ -20,14 +25,23 @@ func deleteVirtualAP(proc processRunner, iwBin, name string) error {
 	return nil
 }
 
-// assignIP assigns a CIDR address to iface and brings it up.
-// Runs: ip addr add <cidr> dev <iface> && ip link set <iface> up
-func assignIP(proc processRunner, ipBin, iface, cidr string) error {
-	if err := proc.Start(ipBin, []string{"addr", "add", cidr, "dev", iface}); err != nil {
-		return fmt.Errorf("ip addr add %s dev %s: %w", cidr, iface, err)
+// assignIP assigns a CIDR address to iface and brings it up using netlink.
+// No external binary required — uses vishvananda/netlink directly.
+func assignIP(iface, cidr string) error {
+	link, err := netlink.LinkByName(iface)
+	if err != nil {
+		return fmt.Errorf("link %s: %w", iface, err)
 	}
-	if err := proc.Start(ipBin, []string{"link", "set", iface, "up"}); err != nil {
-		return fmt.Errorf("ip link set %s up: %w", iface, err)
+	ip, netw, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return fmt.Errorf("parse cidr %s: %w", cidr, err)
+	}
+	addr := &netlink.Addr{IPNet: &net.IPNet{IP: ip, Mask: netw.Mask}}
+	if err := netlink.AddrAdd(link, addr); err != nil {
+		return fmt.Errorf("addr add %s dev %s: %w", cidr, iface, err)
+	}
+	if err := netlink.LinkSetUp(link); err != nil {
+		return fmt.Errorf("link set %s up: %w", iface, err)
 	}
 	return nil
 }
