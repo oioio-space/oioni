@@ -192,6 +192,7 @@ func main() {
 	if err := wifiMgr.Start(ctx); err != nil {
 		log.Printf("wifi: %v", err)
 	}
+	startWiFiAPI(ctx, wifiMgr)
 
 	// Apply WiFi AP config if any flags were provided.
 	if *wifiAPSSID != "" || *wifiAPChannel != 0 || *wifiAPIP != "" {

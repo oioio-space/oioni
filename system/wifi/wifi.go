@@ -28,6 +28,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -284,8 +285,40 @@ func (m *Manager) Scan() ([]Network, error) {
 	return nets, nil
 }
 
+// listNetworkID returns the wpa_supplicant network id for the given SSID,
+// or "" if not found. Parses LIST_NETWORKS output (tab-separated lines).
+func (m *Manager) listNetworkID(ssid string) string {
+	out, err := m.send("LIST_NETWORKS")
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(out, "\n") {
+		parts := strings.Split(line, "\t")
+		if len(parts) >= 2 && parts[1] == ssid {
+			return strings.TrimSpace(parts[0])
+		}
+	}
+	return ""
+}
+
 // Connect connects to an SSID with optional PSK. If save is true, persists credentials.
+// When psk is empty and the SSID is already configured in wpa_supplicant (loaded from
+// wpa_supplicant.conf on startup), Connect selects the existing network entry directly
+// so that the saved WPA2 credentials are used — avoiding the ADD_NETWORK+key_mgmt=NONE
+// path which would attempt an open connection.
 func (m *Manager) Connect(ssid, psk string, save bool) error {
+	// If no PSK given, try to reuse the existing wpa_supplicant network entry.
+	if psk == "" {
+		if id := m.listNetworkID(ssid); id != "" {
+			for _, cmd := range []string{"SELECT_NETWORK " + id, "RECONNECT"} {
+				if _, err := m.send(cmd); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}
+
 	id, err := m.send("ADD_NETWORK")
 	if err != nil {
 		return err
@@ -313,14 +346,17 @@ func (m *Manager) Connect(ssid, psk string, save bool) error {
 		if err != nil {
 			return fmt.Errorf("read saved networks: %w", err)
 		}
-		// Remove duplicate if re-saving same SSID
+		// Remove duplicate if re-saving same SSID; preserve existing PSK if new one is empty.
+		actualPSK := psk
 		var filtered []savedNetwork
 		for _, n := range existing {
 			if n.SSID != ssid {
 				filtered = append(filtered, n)
+			} else if actualPSK == "" {
+				actualPSK = n.PSK // keep the stored PSK
 			}
 		}
-		filtered = append(filtered, savedNetwork{SSID: ssid, PSK: psk})
+		filtered = append(filtered, savedNetwork{SSID: ssid, PSK: actualPSK})
 		if err := m.conf.write(filtered); err != nil {
 			return fmt.Errorf("save credentials: %w", err)
 		}
@@ -400,9 +436,99 @@ func (m *Manager) GetMode() Mode {
 	return m.mode
 }
 
+// staChannel returns the 2.4 GHz channel that wpa_supplicant is currently using,
+// by parsing the freq= field from the STATUS response. Returns 0 if not connected.
+// Must NOT be called with m.mu held (send accesses m.conn without locking).
+func (m *Manager) staChannel() int {
+	status, err := m.send("STATUS")
+	if err != nil {
+		return 0
+	}
+	for _, line := range strings.Split(status, "\n") {
+		if !strings.HasPrefix(line, "freq=") {
+			continue
+		}
+		var freq int
+		if _, err := fmt.Sscanf(line, "freq=%d", &freq); err != nil {
+			continue
+		}
+		if freq >= 2412 && freq <= 2484 { // 2.4 GHz band
+			return (freq - 2407) / 5
+		}
+	}
+	return 0
+}
+
+// reconnectWPALocked terminates the current wpa_supplicant, restarts it, and
+// reconnects the Manager's control socket. MUST be called with m.mu held.
+//
+// This is needed after AP mode is disabled: destroying the uap0 virtual interface
+// leaves the BCM43430 firmware in a state where scans time out (brcmf_escan_timeout).
+// Restarting wpa_supplicant forces a firmware reset and allows STA to reconnect.
+func (m *Manager) reconnectWPALocked(ctx context.Context) {
+	if m.conn != nil {
+		_, _ = m.conn.SendCommand("TERMINATE") // ask wpa_supplicant to exit cleanly
+		_ = m.conn.Close()
+		m.conn = nil
+	}
+
+	ctrlPath := filepath.Join(m.cfg.CtrlDir, m.cfg.Iface)
+
+	// Wait up to 3s for old wpa_supplicant socket to vanish.
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(ctrlPath); os.IsNotExist(err) {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+
+	// Restart wpa_supplicant (-B daemonises; Start() returns after fork).
+	args := []string{
+		"-i", m.cfg.Iface,
+		"-C", m.cfg.CtrlDir,
+		"-c", filepath.Join(m.cfg.ConfDir, "wpa_supplicant.conf"),
+		"-B",
+	}
+	if err := m.proc.Start(m.cfg.WpaSupplicantBin, args); err != nil {
+		log.Printf("wifi: reconnectWPA restart: %v", err)
+		return
+	}
+
+	// Poll for socket + reconnect (up to 5s).
+	localPath := fmt.Sprintf("/tmp/oioni-wpa-%d", os.Getpid())
+	deadline = time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		conn, err := m.newConn(ctrlPath, localPath)
+		if err == nil {
+			m.conn = conn
+			log.Printf("wifi: wpa_supplicant restarted, STA reconnecting")
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+	log.Printf("wifi: reconnectWPA: socket not ready after 5s")
+}
+
 // SetMode applies a new operating mode and persists it to mode.json.
-// Goroutine-safe. AP transitions happen live without restarting STA.
+// Goroutine-safe. AP transitions happen live; disabling AP restarts wpa_supplicant
+// to reset the BCM43430 firmware (brcmf_escan_timeout after uap0 deletion).
 func (m *Manager) SetMode(ctx context.Context, mode Mode) error {
+	// Detect STA channel BEFORE locking (send is not under m.mu).
+	// BCM43430 requires STA and AP to share the same channel for concurrent operation.
+	var detectedChannel int
+	if mode.AP {
+		detectedChannel = m.staChannel()
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -417,6 +543,11 @@ func (m *Manager) SetMode(ctx context.Context, mode Mode) error {
 		if cfg.SSID == "" {
 			return fmt.Errorf("SetMode: AP config has no SSID — call SetAPConfig first")
 		}
+		// Use STA channel so AP and STA share the same frequency (BCM43430 constraint).
+		if detectedChannel > 0 {
+			cfg.Channel = detectedChannel
+			log.Printf("wifi: AP channel auto-set to %d (STA channel)", detectedChannel)
+		}
 		apMgr := newAPManager(cfg, m.conf, m.proc, m.cfg.HostapdBin, m.cfg.IwBin)
 		if err := apMgr.Start(ctx); err != nil {
 			return fmt.Errorf("SetMode: start AP: %w", err)
@@ -424,10 +555,11 @@ func (m *Manager) SetMode(ctx context.Context, mode Mode) error {
 		m.apMgr = apMgr
 	}
 
-	// AP: turn off
+	// AP: turn off — stop AP and restart wpa_supplicant to reset chip state.
 	if !mode.AP && prev.AP && m.apMgr != nil {
 		m.apMgr.Stop()
 		m.apMgr = nil
+		m.reconnectWPALocked(ctx) // blocks ~3–5s while wpa_supplicant restarts
 	}
 
 	m.mode = mode

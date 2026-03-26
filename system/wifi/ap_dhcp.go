@@ -11,6 +11,7 @@ import (
 	"log"
 	"net"
 	"sync"
+	"syscall"
 )
 
 // apDHCPServer is a minimal DHCPv4 server for the AP subnet.
@@ -70,12 +71,27 @@ func newAPDHCPServer(iface string, cfg APConfig) *apDHCPServer {
 	}
 }
 
-// Start opens the DHCP socket and begins serving in a goroutine.
+// Start opens the DHCP socket bound to s.iface only and begins serving.
+// SO_BINDTODEVICE restricts the socket to uap0 so it does not conflict
+// with udhcpd which may be serving the ECM/RNDIS interface on the same port.
 func (s *apDHCPServer) Start(ctx context.Context) error {
-	conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4zero, Port: 67})
+	lc := net.ListenConfig{
+		Control: func(network, address string, c syscall.RawConn) error {
+			var soErr error
+			if err := c.Control(func(fd uintptr) {
+				soErr = syscall.SetsockoptString(int(fd), syscall.SOL_SOCKET,
+					syscall.SO_BINDTODEVICE, s.iface)
+			}); err != nil {
+				return err
+			}
+			return soErr
+		},
+	}
+	pc, err := lc.ListenPacket(ctx, "udp4", "0.0.0.0:67")
 	if err != nil {
 		return err
 	}
+	conn := pc.(*net.UDPConn)
 	s.conn = conn
 	s.wg.Add(1)
 	go func() {
