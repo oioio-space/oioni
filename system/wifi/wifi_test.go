@@ -1,6 +1,7 @@
 package wifi
 
 import (
+	"os"
 	"testing"
 )
 
@@ -8,6 +9,9 @@ import (
 type fakeProcess struct{ started bool }
 
 func (f *fakeProcess) Start(_ string, _ []string) error { f.started = true; return nil }
+func (f *fakeProcess) StartProcess(_ string, _ []string) (*os.Process, error) {
+	return nil, nil
+}
 
 // fakeWpa satisfies wpaConn for tests.
 type fakeWpa struct {

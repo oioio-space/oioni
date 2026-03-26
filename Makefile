@@ -88,7 +88,15 @@ build-wifi-bins: ## Compile wpa_supplicant static ARM64 binary for system/wifi
 	@ls -lh system/wifi/bin/wpa_supplicant 2>/dev/null || echo "(not found -- check Dockerfile)"
 	@file system/wifi/bin/wpa_supplicant 2>/dev/null || true
 
-build-all: build-modules build-imgvol-bins build-wifi-bins build ## Build modules + static bins then verify gokrazy compilation
+build-wifi-ap-bins: ## Compile hostapd, iw, ip static ARM64 binaries for AP mode
+	podman build --platform linux/arm64 \
+	    --output type=local,dest=system/wifi/bin \
+	    system/wifi/bin/
+	@echo "AP binaries generated in system/wifi/bin/:"
+	@ls -lh system/wifi/bin/hostapd system/wifi/bin/iw system/wifi/bin/ip 2>/dev/null \
+	    || echo "(not found -- check system/wifi/bin/Dockerfile)"
+
+build-all: build-modules build-imgvol-bins build-wifi-bins build-wifi-ap-bins build ## Build all static bins then verify gokrazy compilation
 
 .DEFAULT_GOAL := help
-.PHONY: help flash flash-auto list-sd build update ssh logs find-pi test build-modules build-imgvol-bins build-wifi-bins build-all
+.PHONY: help flash flash-auto list-sd build update ssh logs find-pi test build-modules build-imgvol-bins build-wifi-bins build-wifi-ap-bins build-all

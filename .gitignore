@@ -10,6 +10,8 @@ oioio/builddir/
 
 # Compiled binaries (keep mkfs.* and *.ko — they're pre-built for offline use)
 system/wifi/bin/
+!system/wifi/bin/Dockerfile
+!system/wifi/bin/hostapd.config
 /oioni
 hello/hello
 cmd/oioni/oioni

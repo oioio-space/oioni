@@ -4,17 +4,24 @@
 //
 //	mgr := wifi.New(wifi.Config{
 //	    WpaSupplicantBin: "/user/wpa_supplicant",
+//	    HostapdBin:       "/user/hostapd",
+//	    IwBin:            "/user/iw",
+//	    IpBin:            "/user/ip",
 //	    ConfDir:          "/perm/wifi",
 //	    CtrlDir:          "/var/run/wpa_supplicant",
 //	    Iface:            "wlan0",
 //	})
 //	if err := mgr.Start(ctx); err != nil { log.Printf("wifi: %v", err) }
 //	mgr.Connect("MyNet", "passphrase", true)
+//	mgr.SetMode(ctx, wifi.Mode{STA: true, AP: true}) // concurrent STA+AP
 //
 // Start loads the brcmfmac kernel modules, starts wpa_supplicant in daemon
 // mode, and connects to the control socket. Saved credentials live in
 // ConfDir/wpa_supplicant.conf; a one-time migration from /etc/wifi.json
 // (gokrazy/wifi legacy) runs on first boot.
+//
+// AP mode creates the uap0 virtual interface and starts hostapd + a DHCP server.
+// Scanner always works when STA is active (SCAN/SCAN_RESULTS on wpa_supplicant).
 package wifi
 
 import (
@@ -24,6 +31,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -39,12 +47,23 @@ var kernelRelease = func() string {
 	return string(uts.Release[:bytes.IndexByte(uts.Release[:], 0)])
 }()
 
+// Mode selects which WiFi roles are active. Modes are independent and additive.
+// Scanner always works when STA is active (no separate mode bit needed).
+type Mode struct {
+	STA bool `json:"sta"` // client mode via wpa_supplicant on wlan0
+	AP  bool `json:"ap"`  // access point mode via hostapd on uap0
+}
+
 // Config holds the runtime configuration for the Manager.
 type Config struct {
 	WpaSupplicantBin string // e.g. "/user/wpa_supplicant"
+	HostapdBin       string // e.g. "/user/hostapd" (AP mode)
+	IwBin            string // e.g. "/user/iw" (AP mode — virtual interface creation)
+	IpBin            string // e.g. "/user/ip" (AP mode — IP assignment)
 	ConfDir          string // e.g. "/perm/wifi"
 	CtrlDir          string // e.g. "/var/run/wpa_supplicant"
 	Iface            string // e.g. "wlan0"
+	DefaultAPConfig  APConfig
 }
 
 // Network is a scanned WiFi access point.
@@ -74,6 +93,10 @@ type Manager struct {
 	proc    processRunner
 	conn    wpaConn // nil until Start is called
 	newConn func(ctrlPath, localPath string) (wpaConn, error) // injectable for tests
+
+	mu    sync.Mutex
+	mode  Mode
+	apMgr *APManager // non-nil when AP is running
 }
 
 // New creates a Manager with the given configuration.
@@ -191,6 +214,7 @@ func (m *Manager) Start(ctx context.Context) error {
 		conn, err := m.newConn(ctrlPath, localPath)
 		if err == nil {
 			m.conn = conn
+			go m.restoreMode(ctx)
 			return nil
 		}
 		select {
@@ -200,6 +224,25 @@ func (m *Manager) Start(ctx context.Context) error {
 		}
 	}
 	return fmt.Errorf("wpa_supplicant control socket not ready after 3s")
+}
+
+// restoreMode reads the persisted Mode and re-activates AP if needed.
+// Called at the end of Start(). Non-fatal — logs errors.
+func (m *Manager) restoreMode(ctx context.Context) {
+	mode, err := m.conf.readMode()
+	if err != nil {
+		return
+	}
+	if !mode.AP {
+		m.mu.Lock()
+		m.mode = mode
+		m.mu.Unlock()
+		return
+	}
+	// Re-apply AP mode (ignoring error — STA is already working).
+	if err := m.SetMode(ctx, mode); err != nil {
+		_ = err // non-fatal: AP may not start if config missing or binary absent
+	}
 }
 
 // SetEnabled enables or disables WiFi via /sys/class/rfkill/ sysfs.
@@ -349,4 +392,65 @@ func (m *Manager) send(cmd string) (string, error) {
 		return "", fmt.Errorf("wifi manager not started")
 	}
 	return m.conn.SendCommand(cmd)
+}
+
+// GetMode returns the current operating mode. Goroutine-safe.
+func (m *Manager) GetMode() Mode {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.mode
+}
+
+// SetMode applies a new operating mode and persists it to mode.json.
+// Goroutine-safe. AP transitions happen live without restarting STA.
+func (m *Manager) SetMode(ctx context.Context, mode Mode) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	prev := m.mode
+
+	// AP: turn on
+	if mode.AP && !prev.AP {
+		cfg, err := m.conf.readAPConfig()
+		if err != nil {
+			return fmt.Errorf("SetMode: read AP config: %w", err)
+		}
+		if cfg.SSID == "" {
+			return fmt.Errorf("SetMode: AP config has no SSID — call SetAPConfig first")
+		}
+		apMgr := newAPManager(cfg, m.conf, m.proc, m.cfg.HostapdBin, m.cfg.IwBin, m.cfg.IpBin)
+		if err := apMgr.Start(ctx); err != nil {
+			return fmt.Errorf("SetMode: start AP: %w", err)
+		}
+		m.apMgr = apMgr
+	}
+
+	// AP: turn off
+	if !mode.AP && prev.AP && m.apMgr != nil {
+		m.apMgr.Stop()
+		m.apMgr = nil
+	}
+
+	m.mode = mode
+	return m.conf.writeMode(mode)
+}
+
+// SetAPConfig persists an APConfig for future AP mode use.
+func (m *Manager) SetAPConfig(cfg APConfig) error {
+	return m.conf.writeAPConfig(cfg)
+}
+
+// GetAPConfig returns the persisted APConfig (or defaults if not set).
+func (m *Manager) GetAPConfig() (APConfig, error) {
+	return m.conf.readAPConfig()
+}
+
+// APStatus returns the current AP state. Returns zero APStatus when AP is off.
+func (m *Manager) APStatus() APStatus {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.apMgr == nil {
+		return APStatus{}
+	}
+	return m.apMgr.Status()
 }

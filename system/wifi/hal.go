@@ -1,6 +1,8 @@
 // system/wifi/hal.go — injectable interfaces for wpa_supplicant HAL
 package wifi
 
+import "os"
+
 // wpaConn is the interface over a wpa_supplicant control socket connection.
 // Real implementation: realWpaConn (wpa.go). Test implementation: fakeWpaConn.
 type wpaConn interface {
@@ -9,9 +11,10 @@ type wpaConn interface {
 	Close() error
 }
 
-// processRunner starts and terminates wpa_supplicant.
+// processRunner starts external processes used by wifi management.
 type processRunner interface {
-	// Start launches wpa_supplicant with the given args. Returns an error if
-	// the process fails to start. The process runs detached (daemon mode -B).
+	// Start runs a command to completion (used for daemon-mode -B processes).
 	Start(bin string, args []string) error
+	// StartProcess launches a foreground process and returns it for lifecycle management.
+	StartProcess(bin string, args []string) (*os.Process, error)
 }

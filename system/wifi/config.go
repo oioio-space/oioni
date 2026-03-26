@@ -127,3 +127,81 @@ func (c *confManager) migrateIfNeeded() error {
 	}
 	return os.WriteFile(markerPath, []byte(legacyPath+"\n"), 0600)
 }
+
+// writeMode persists the current Mode to mode.json.
+func (c *confManager) writeMode(m Mode) error {
+	if err := os.MkdirAll(c.dir, 0755); err != nil {
+		return err
+	}
+	data, err := json.Marshal(m)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(c.dir, "mode.json"), data, 0600)
+}
+
+// readMode reads the persisted Mode from mode.json.
+// Returns zero Mode (STA:false, AP:false) if the file does not exist.
+func (c *confManager) readMode() (Mode, error) {
+	data, err := os.ReadFile(filepath.Join(c.dir, "mode.json"))
+	if os.IsNotExist(err) {
+		return Mode{}, nil
+	}
+	if err != nil {
+		return Mode{}, err
+	}
+	var m Mode
+	if err := json.Unmarshal(data, &m); err != nil {
+		return Mode{}, fmt.Errorf("parse mode.json: %w", err)
+	}
+	return m, nil
+}
+
+// writeAPConfig persists APConfig to apconfig.json.
+func (c *confManager) writeAPConfig(cfg APConfig) error {
+	if err := os.MkdirAll(c.dir, 0755); err != nil {
+		return err
+	}
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(c.dir, "apconfig.json"), data, 0600)
+}
+
+// readAPConfig reads the persisted APConfig from apconfig.json.
+// Returns the default APConfig if the file does not exist.
+func (c *confManager) readAPConfig() (APConfig, error) {
+	data, err := os.ReadFile(filepath.Join(c.dir, "apconfig.json"))
+	if os.IsNotExist(err) {
+		return defaultAPConfig(), nil
+	}
+	if err != nil {
+		return APConfig{}, err
+	}
+	var cfg APConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return APConfig{}, fmt.Errorf("parse apconfig.json: %w", err)
+	}
+	return cfg, nil
+}
+
+// writeHostapdConf generates hostapd.conf from APConfig into confDir.
+func (c *confManager) writeHostapdConf(cfg APConfig) error {
+	if err := os.MkdirAll(c.dir, 0755); err != nil {
+		return err
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "interface=uap0\n")
+	fmt.Fprintf(&b, "driver=nl80211\n")
+	fmt.Fprintf(&b, "ssid=%s\n", cfg.SSID)
+	fmt.Fprintf(&b, "hw_mode=g\n")
+	fmt.Fprintf(&b, "channel=%d\n", cfg.Channel)
+	if cfg.PSK != "" {
+		fmt.Fprintf(&b, "wpa=2\n")
+		fmt.Fprintf(&b, "wpa_passphrase=%s\n", cfg.PSK)
+		fmt.Fprintf(&b, "wpa_key_mgmt=WPA-PSK\n")
+		fmt.Fprintf(&b, "rsn_pairwise=CCMP\n")
+	}
+	return os.WriteFile(filepath.Join(c.dir, "hostapd.conf"), []byte(b.String()), 0600)
+}
