@@ -87,12 +87,18 @@ type Status struct {
 }
 
 // Manager wraps wpa_supplicant to provide WiFi management.
+// Start must be called before any other method.
 type Manager struct {
 	cfg     Config
 	conf    *confManager
 	proc    processRunner
-	conn    wpaConn // nil until Start is called
 	newConn func(ctrlPath, localPath string) (wpaConn, error) // injectable for tests
+
+	// connMu guards conn. Use RLock for reads in send(), Lock when replacing conn
+	// (e.g. during reconnectWPALocked). Kept separate from mu so that concurrent
+	// STA commands (Status, Scan) do not block AP mode transitions.
+	connMu sync.RWMutex
+	conn   wpaConn // nil until Start is called
 
 	mu    sync.Mutex
 	mode  Mode
@@ -213,7 +219,9 @@ func (m *Manager) Start(ctx context.Context) error {
 	for time.Now().Before(deadline) {
 		conn, err := m.newConn(ctrlPath, localPath)
 		if err == nil {
+			m.connMu.Lock()
 			m.conn = conn
+			m.connMu.Unlock()
 			go m.restoreMode(ctx)
 			return nil
 		}
@@ -422,11 +430,16 @@ func (m *Manager) RemoveSaved(ssid string) error {
 	return m.conf.write(filtered)
 }
 
+// send sends a single wpa_supplicant control command and returns the response.
+// It is safe to call concurrently; connMu prevents races with reconnectWPALocked.
 func (m *Manager) send(cmd string) (string, error) {
-	if m.conn == nil {
-		return "", fmt.Errorf("wifi manager not started")
+	m.connMu.RLock()
+	conn := m.conn
+	m.connMu.RUnlock()
+	if conn == nil {
+		return "", fmt.Errorf("wifi: not started")
 	}
-	return m.conn.SendCommand(cmd)
+	return conn.SendCommand(cmd)
 }
 
 // GetMode returns the current operating mode. Goroutine-safe.
@@ -466,11 +479,13 @@ func (m *Manager) staChannel() int {
 // leaves the BCM43430 firmware in a state where scans time out (brcmf_escan_timeout).
 // Restarting wpa_supplicant forces a firmware reset and allows STA to reconnect.
 func (m *Manager) reconnectWPALocked(ctx context.Context) {
+	m.connMu.Lock()
 	if m.conn != nil {
 		_, _ = m.conn.SendCommand("TERMINATE") // ask wpa_supplicant to exit cleanly
 		_ = m.conn.Close()
 		m.conn = nil
 	}
+	m.connMu.Unlock()
 
 	ctrlPath := filepath.Join(m.cfg.CtrlDir, m.cfg.Iface)
 
@@ -505,7 +520,9 @@ func (m *Manager) reconnectWPALocked(ctx context.Context) {
 	for time.Now().Before(deadline) {
 		conn, err := m.newConn(ctrlPath, localPath)
 		if err == nil {
+			m.connMu.Lock()
 			m.conn = conn
+			m.connMu.Unlock()
 			log.Printf("wifi: wpa_supplicant restarted, STA reconnecting")
 			return
 		}
@@ -566,8 +583,16 @@ func (m *Manager) SetMode(ctx context.Context, mode Mode) error {
 	return m.conf.writeMode(mode)
 }
 
-// SetAPConfig persists an APConfig for future AP mode use.
+// SetAPConfig validates and persists an APConfig for future AP mode use.
+// PSK must be empty (open network) or 8–63 characters (WPA2 requirement).
+// Channel must be 0 (auto / keep saved) or 1–14 (2.4 GHz band).
 func (m *Manager) SetAPConfig(cfg APConfig) error {
+	if cfg.PSK != "" && (len(cfg.PSK) < 8 || len(cfg.PSK) > 63) {
+		return fmt.Errorf("wifi: AP PSK must be 8–63 characters (got %d)", len(cfg.PSK))
+	}
+	if cfg.Channel != 0 && (cfg.Channel < 1 || cfg.Channel > 14) {
+		return fmt.Errorf("wifi: AP channel must be 1–14 for 2.4 GHz (got %d)", cfg.Channel)
+	}
 	return m.conf.writeAPConfig(cfg)
 }
 

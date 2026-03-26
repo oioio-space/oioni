@@ -346,7 +346,7 @@ func TestManager_APStatus_OffByDefault(t *testing.T) {
 
 func TestManager_SetAPConfig_Roundtrip(t *testing.T) {
 	m := newTestManagerForMode(t)
-	cfg := APConfig{SSID: "oioni", PSK: "abc123", Channel: 6, IP: "192.168.4.1/24"}
+	cfg := APConfig{SSID: "oioni", PSK: "abc12345", Channel: 6, IP: "192.168.4.1/24"}
 	if err := m.SetAPConfig(cfg); err != nil {
 		t.Fatal(err)
 	}

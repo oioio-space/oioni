@@ -3,6 +3,9 @@
 // Implements DHCPv4 DISCOVER→OFFER and REQUEST→ACK over raw UDP broadcast.
 // Leases are held in memory; clients must re-request after Pi reboot.
 // Uses only stdlib — no external dependency required for this subset of DHCP.
+//
+// The socket is bound to the uap0 interface via SO_BINDTODEVICE so it does not
+// conflict with udhcpd which may serve the ECM/RNDIS interface on the same port.
 package wifi
 
 import (
@@ -14,11 +17,44 @@ import (
 	"syscall"
 )
 
+// DHCP message types (RFC 2132 option 53).
+const (
+	dhcpMsgDiscover byte = 1
+	dhcpMsgOffer    byte = 2
+	dhcpMsgRequest  byte = 3
+	dhcpMsgAck      byte = 5
+)
+
+// DHCP option codes (RFC 2132).
+const (
+	dhcpOptMsgType    byte = 53
+	dhcpOptSubnetMask byte = 1
+	dhcpOptRouter     byte = 3
+	dhcpOptDNS        byte = 6
+	dhcpOptLease      byte = 51
+	dhcpOptServerID   byte = 54
+	dhcpOptEnd        byte = 255
+)
+
+const (
+	// dhcpMagicCookie is the RFC 2131 magic number at offset 236 of every DHCP packet.
+	dhcpMagicCookie uint32 = 0x63825363
+
+	// dhcpLeaseSeconds is the lease duration sent to clients (1 hour).
+	dhcpLeaseSeconds uint32 = 3600
+
+	// dhcpPoolStart/End are the last-octet bounds of the address pool (.100–.200).
+	// The pool is always relative to the /24 network base (101 addresses max).
+	dhcpPoolStart = 100
+	dhcpPoolEnd   = 200
+)
+
 // apDHCPServer is a minimal DHCPv4 server for the AP subnet.
+// It assigns stable leases (same MAC always gets same IP) from a fixed pool.
 type apDHCPServer struct {
 	iface  string
-	gw     net.IP   // gateway = uap0 IP
-	subnet net.IP   // network address
+	gw     net.IP // gateway = uap0 IP
+	subnet net.IP // network address
 	mask   net.IPMask
 	dns    []net.IP
 	start  net.IP // first leasable IP (.100)
@@ -26,6 +62,7 @@ type apDHCPServer struct {
 
 	mu     sync.Mutex
 	leases map[[6]byte]net.IP // MAC → assigned IP
+	taken  map[[4]byte]bool   // IP (4-byte key) → in-use; O(1) pool search
 
 	conn *net.UDPConn
 	wg   sync.WaitGroup
@@ -42,12 +79,11 @@ func newAPDHCPServer(iface string, cfg APConfig) *apDHCPServer {
 	}
 	gw := ip.To4()
 
-	// Pool: subnet base + 100 to + 200
 	base := netw.IP.To4()
 	start := cloneIP(base)
-	start[3] = 100
+	start[3] = dhcpPoolStart
 	end := cloneIP(base)
-	end[3] = 200
+	end[3] = dhcpPoolEnd
 
 	var dnsIPs []net.IP
 	for _, d := range cfg.DNS {
@@ -68,6 +104,7 @@ func newAPDHCPServer(iface string, cfg APConfig) *apDHCPServer {
 		start:  start,
 		end:    end,
 		leases: make(map[[6]byte]net.IP),
+		taken:  make(map[[4]byte]bool),
 	}
 }
 
@@ -151,8 +188,8 @@ func (s *apDHCPServer) handle(conn *net.UDPConn, pkt []byte, _ *net.UDPAddr) {
 	copy(mac[:], pkt[28:28+hlen])
 	xid := pkt[4:8]
 
-	// Parse DHCP message type from options (magic cookie at offset 236)
-	if binary.BigEndian.Uint32(pkt[236:240]) != 0x63825363 {
+	// Verify DHCP magic cookie at offset 236 (RFC 2131).
+	if binary.BigEndian.Uint32(pkt[236:240]) != dhcpMagicCookie {
 		return
 	}
 	msgType := dhcpMsgType(pkt[240:])
@@ -161,81 +198,74 @@ func (s *apDHCPServer) handle(conn *net.UDPConn, pkt []byte, _ *net.UDPAddr) {
 	}
 
 	switch msgType {
-	case 1: // DISCOVER
+	case dhcpMsgDiscover:
 		ip := s.assignIP(mac)
-		s.sendReply(conn, pkt, xid, mac, ip, 2 /* OFFER */)
-	case 3: // REQUEST
+		s.sendReply(conn, pkt, xid, mac, ip, dhcpMsgOffer)
+	case dhcpMsgRequest:
 		ip := s.assignIP(mac)
-		s.sendReply(conn, pkt, xid, mac, ip, 5 /* ACK */)
+		s.sendReply(conn, pkt, xid, mac, ip, dhcpMsgAck)
 	}
 }
 
-// assignIP returns the IP assigned to mac, creating a new lease if needed.
+// assignIP returns the IP assigned to mac, creating a stable lease if needed.
+// Uses an O(1) taken-set so pool searches stay fast even when the pool is full.
 func (s *apDHCPServer) assignIP(mac [6]byte) net.IP {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if ip, ok := s.leases[mac]; ok {
-		return ip
+		return cloneIP(ip)
 	}
-	// Find an unused IP in the pool.
+	// Scan pool for the first available address.
 	ip := cloneIP(s.start)
 	for !ipAfter(ip, s.end) {
-		taken := false
-		for _, leased := range s.leases {
-			if leased.Equal(ip) {
-				taken = true
-				break
-			}
-		}
-		if !taken {
+		var key [4]byte
+		copy(key[:], ip.To4())
+		if !s.taken[key] {
 			leased := cloneIP(ip)
 			s.leases[mac] = leased
+			s.taken[key] = true
 			return leased
 		}
 		ip[3]++
 	}
-	// Pool exhausted — reuse gateway (should not happen in practice).
-	return cloneIP(s.gw)
+	log.Printf("wifi/dhcp: address pool exhausted (%d leases)", len(s.leases))
+	return cloneIP(s.gw) // fallback: should not happen with <101 clients
 }
 
-// sendReply sends a DHCP OFFER or ACK.
+// sendReply broadcasts a DHCP OFFER or ACK to port 68.
+// pkt layout follows RFC 2131; options follow RFC 2132.
 func (s *apDHCPServer) sendReply(conn *net.UDPConn, req []byte, xid []byte, mac [6]byte, yiaddr net.IP, msgType byte) {
 	pkt := make([]byte, 300)
-	pkt[0] = 2 // BOOTREPLY
+	pkt[0] = 2 // op: BOOTREPLY
 	pkt[1] = req[1]
 	pkt[2] = req[2]
 	pkt[3] = 0
 	copy(pkt[4:8], xid)
-	copy(pkt[16:20], yiaddr.To4()) // yiaddr
-	copy(pkt[20:24], s.gw.To4())   // siaddr
-	copy(pkt[28:28+6], mac[:])     // chaddr
+	copy(pkt[16:20], yiaddr.To4()) // yiaddr: offered address
+	copy(pkt[20:24], s.gw.To4())   // siaddr: server address
+	copy(pkt[28:28+6], mac[:])     // chaddr: client hardware address
 
-	// Magic cookie
-	binary.BigEndian.PutUint32(pkt[236:240], 0x63825363)
+	binary.BigEndian.PutUint32(pkt[236:240], dhcpMagicCookie)
 
-	// Options
 	opt := pkt[240:]
 	i := 0
-	// 53: message type
-	opt[i] = 53; opt[i+1] = 1; opt[i+2] = msgType; i += 3
-	// 1: subnet mask
-	opt[i] = 1; opt[i+1] = 4; copy(opt[i+2:], s.mask); i += 6
-	// 3: router
-	opt[i] = 3; opt[i+1] = 4; copy(opt[i+2:], s.gw.To4()); i += 6
-	// 6: DNS
-	opt[i] = 6; opt[i+1] = byte(4 * len(s.dns)); i += 2
+	opt[i] = dhcpOptMsgType; opt[i+1] = 1; opt[i+2] = msgType; i += 3
+	opt[i] = dhcpOptSubnetMask; opt[i+1] = 4; copy(opt[i+2:], s.mask); i += 6
+	opt[i] = dhcpOptRouter; opt[i+1] = 4; copy(opt[i+2:], s.gw.To4()); i += 6
+	opt[i] = dhcpOptDNS; opt[i+1] = byte(4 * len(s.dns)); i += 2
 	for _, d := range s.dns {
 		copy(opt[i:], d.To4()); i += 4
 	}
-	// 51: lease time (1 hour)
-	opt[i] = 51; opt[i+1] = 4; binary.BigEndian.PutUint32(opt[i+2:], 3600); i += 6
-	// 54: server identifier
-	opt[i] = 54; opt[i+1] = 4; copy(opt[i+2:], s.gw.To4()); i += 6
-	// 255: end
-	opt[i] = 255
+	opt[i] = dhcpOptLease; opt[i+1] = 4; binary.BigEndian.PutUint32(opt[i+2:], dhcpLeaseSeconds); i += 6
+	opt[i] = dhcpOptServerID; opt[i+1] = 4; copy(opt[i+2:], s.gw.To4()); i += 6
+	opt[i] = dhcpOptEnd
 
 	dst := &net.UDPAddr{IP: net.IPv4bcast, Port: 68}
-	_, _ = conn.WriteTo(pkt, dst)
+	if _, err := conn.WriteTo(pkt, dst); err != nil {
+		log.Printf("wifi/dhcp: send %s to %s: %v",
+			map[byte]string{dhcpMsgOffer: "OFFER", dhcpMsgAck: "ACK"}[msgType],
+			yiaddr, err)
+	}
 }
 
 // dhcpMsgType extracts the DHCP message type (option 53) from options bytes.

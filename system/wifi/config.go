@@ -9,23 +9,33 @@ import (
 	"strings"
 )
 
+// savedNetwork is a single entry in wpa_supplicant.conf: an SSID with optional PSK.
+// Open networks have an empty PSK and key_mgmt=NONE in the config file.
 type savedNetwork struct {
 	SSID string
 	PSK  string // empty for open networks
 }
 
+// confManager reads and writes the WiFi configuration directory (ConfDir).
+// It manages wpa_supplicant.conf, mode.json, apconfig.json, and hostapd.conf.
 type confManager struct {
-	dir        string // e.g. "/perm/wifi"
+	dir        string // e.g. "/perm/wifi" — must be writable (use /perm on gokrazy)
 	legacyPath string // overridable for tests; defaults to /etc/wifi.json
 }
 
+// confPath returns the absolute path to wpa_supplicant.conf.
 func (c *confManager) confPath() string {
 	return filepath.Join(c.dir, "wpa_supplicant.conf")
 }
 
+// ensureDir creates the configuration directory with mode 0755 if absent.
+func (c *confManager) ensureDir() error {
+	return os.MkdirAll(c.dir, 0755)
+}
+
 // write serialises networks into wpa_supplicant.conf format.
 func (c *confManager) write(networks []savedNetwork) error {
-	if err := os.MkdirAll(c.dir, 0755); err != nil {
+	if err := c.ensureDir(); err != nil {
 		return err
 	}
 	var b strings.Builder
@@ -122,7 +132,7 @@ func (c *confManager) migrateIfNeeded() error {
 		return err
 	}
 	// Write marker so migration doesn't repeat on next boot.
-	if err := os.MkdirAll(c.dir, 0755); err != nil {
+	if err := c.ensureDir(); err != nil {
 		return err
 	}
 	return os.WriteFile(markerPath, []byte(legacyPath+"\n"), 0600)
@@ -130,7 +140,7 @@ func (c *confManager) migrateIfNeeded() error {
 
 // writeMode persists the current Mode to mode.json.
 func (c *confManager) writeMode(m Mode) error {
-	if err := os.MkdirAll(c.dir, 0755); err != nil {
+	if err := c.ensureDir(); err != nil {
 		return err
 	}
 	data, err := json.Marshal(m)
@@ -159,7 +169,7 @@ func (c *confManager) readMode() (Mode, error) {
 
 // writeAPConfig persists APConfig to apconfig.json.
 func (c *confManager) writeAPConfig(cfg APConfig) error {
-	if err := os.MkdirAll(c.dir, 0755); err != nil {
+	if err := c.ensureDir(); err != nil {
 		return err
 	}
 	data, err := json.Marshal(cfg)
@@ -188,7 +198,7 @@ func (c *confManager) readAPConfig() (APConfig, error) {
 
 // writeHostapdConf generates hostapd.conf from APConfig into confDir.
 func (c *confManager) writeHostapdConf(cfg APConfig) error {
-	if err := os.MkdirAll(c.dir, 0755); err != nil {
+	if err := c.ensureDir(); err != nil {
 		return err
 	}
 	var b strings.Builder

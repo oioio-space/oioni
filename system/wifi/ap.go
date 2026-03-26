@@ -1,4 +1,10 @@
 // system/wifi/ap.go — AP mode management via hostapd + uap0 virtual interface
+//
+// Flow: SetMode(AP:true) → APManager.Start() → createVirtualAP → assignIP →
+//       writeHostapdConf → startHostapd (supervised) → apDHCPServer.Start()
+//
+// The BCM43430 chip supports concurrent STA+AP only when both use the same channel.
+// Manager.SetMode auto-detects the STA channel and passes it in APConfig.Channel.
 package wifi
 
 import (
@@ -6,6 +12,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -34,17 +41,19 @@ type APStatus struct {
 	Clients int    // connected DHCP clients
 }
 
-// APManager manages the hostapd process and DHCP server on uap0.
+// APManager manages the hostapd process and DHCP server on the uap0 virtual
+// interface. Created and destroyed by Manager.SetMode.
 type APManager struct {
 	cfg        APConfig
-	hostapdBin   string
-	iwBin        string
-	conf         *confManager
-	proc         processRunner
-	assignIPFn   func(iface, cidr string) error // injectable for tests
+	hostapdBin string
+	iwBin      string
+	conf       *confManager
+	proc       processRunner
+	assignIPFn func(iface, cidr string) error // injectable; defaults to assignIP
 
+	mu      sync.Mutex  // guards process
 	dhcp    *apDHCPServer
-	process *os.Process // running hostapd; nil when stopped
+	process *os.Process // running hostapd; nil when stopped; guarded by mu
 	cancel  context.CancelFunc
 }
 
@@ -60,14 +69,16 @@ func newAPManager(cfg APConfig, conf *confManager, proc processRunner, hostapdBi
 	}
 }
 
-// Start creates uap0, assigns IP, starts hostapd and the DHCP server.
+// Start creates uap0, assigns the CIDR address, writes hostapd.conf, starts
+// hostapd under supervision, and starts the DHCP server.
+// DHCP failure is non-fatal (logged); all other failures clean up and return.
 func (a *APManager) Start(ctx context.Context) error {
 	if err := createVirtualAP(a.proc, a.iwBin, "wlan0", "uap0"); err != nil {
-		return fmt.Errorf("ap start: %w", err)
+		return fmt.Errorf("ap start: create uap0: %w", err)
 	}
 	if err := a.assignIPFn("uap0", a.cfg.IP); err != nil {
 		_ = deleteVirtualAP(a.proc, a.iwBin, "uap0")
-		return fmt.Errorf("ap start: %w", err)
+		return fmt.Errorf("ap start: assign IP: %w", err)
 	}
 	if err := a.conf.writeHostapdConf(a.cfg); err != nil {
 		_ = deleteVirtualAP(a.proc, a.iwBin, "uap0")
@@ -101,7 +112,9 @@ func (a *APManager) startHostapd(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	a.mu.Lock()
 	a.process = proc
+	a.mu.Unlock()
 
 	go func() {
 		for {
@@ -110,7 +123,7 @@ func (a *APManager) startHostapd(ctx context.Context) error {
 				return // intentional shutdown
 			}
 			if err != nil || (state != nil && !state.Success()) {
-				log.Printf("wifi/ap: hostapd exited unexpectedly (%v), restarting in 3s", err)
+				log.Printf("wifi/ap: hostapd exited (%v), restarting in 3s", err)
 			}
 			select {
 			case <-ctx.Done():
@@ -122,13 +135,16 @@ func (a *APManager) startHostapd(ctx context.Context) error {
 				log.Printf("wifi/ap: hostapd restart failed: %v", err)
 				continue
 			}
+			a.mu.Lock()
 			a.process = proc
+			a.mu.Unlock()
 		}
 	}()
 	return nil
 }
 
-// Stop terminates hostapd, the DHCP server, and deletes uap0.
+// Stop cancels the supervisor goroutine, shuts down the DHCP server, sends
+// SIGINT to hostapd, and deletes the uap0 interface.
 func (a *APManager) Stop() {
 	if a.cancel != nil {
 		a.cancel()
@@ -136,19 +152,24 @@ func (a *APManager) Stop() {
 	if a.dhcp != nil {
 		a.dhcp.Stop()
 	}
-	if a.process != nil {
-		_ = a.process.Signal(os.Interrupt)
-		_, _ = a.process.Wait()
-		a.process = nil
+	a.mu.Lock()
+	proc := a.process
+	a.process = nil
+	a.mu.Unlock()
+	if proc != nil {
+		_ = proc.Signal(os.Interrupt)
+		_, _ = proc.Wait()
 	}
 	if err := deleteVirtualAP(a.proc, a.iwBin, "uap0"); err != nil {
 		log.Printf("wifi/ap: delete uap0: %v", err)
 	}
 }
 
-// Status returns the current AP state.
+// Status returns the current AP state. Safe to call concurrently with Start/Stop.
 func (a *APManager) Status() APStatus {
+	a.mu.Lock()
 	running := a.process != nil
+	a.mu.Unlock()
 	clients := 0
 	if a.dhcp != nil {
 		clients = a.dhcp.ClientCount()
