@@ -204,14 +204,11 @@ func (m *Manager) Start(ctx context.Context) error {
 		return fmt.Errorf("interface %s not ready after 20s", m.cfg.Iface)
 	}
 
-	wpaLogPath := filepath.Join(m.cfg.ConfDir, "wpa.log")
 	args := []string{
 		"-i", m.cfg.Iface,
 		"-C", m.cfg.CtrlDir,
 		"-c", filepath.Join(m.cfg.ConfDir, "wpa_supplicant.conf"),
 		"-B",
-		"-d",            // debug: log WPA2 auth/deauth events
-		"-f", wpaLogPath, // write debug output to persistent file
 	}
 	if err := m.proc.Start(m.cfg.WpaSupplicantBin, args); err != nil {
 		return fmt.Errorf("wpa_supplicant start: %w", err)
