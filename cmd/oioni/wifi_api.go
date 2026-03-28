@@ -18,6 +18,8 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
+	"strings"
 
 	wifi "github.com/oioio-space/oioni/system/wifi"
 )
@@ -119,6 +121,37 @@ func startWiFiAPI(ctx context.Context, mgr *wifi.Manager) {
 			return
 		}
 		fmt.Fprintln(w, "AP mode enabled (STA+AP)")
+	})
+
+	mux.HandleFunc("/wifi/debug/wpa-log", func(w http.ResponseWriter, r *http.Request) {
+		data, err := os.ReadFile("/perm/wifi/wpa.log")
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		// Return last 64KB to avoid overwhelming the response.
+		if len(data) > 65536 {
+			data = data[len(data)-65536:]
+		}
+		w.Header().Set("Content-Type", "text/plain")
+		w.Write(data)
+	})
+
+	mux.HandleFunc("/wifi/debug/wpa-conf", func(w http.ResponseWriter, r *http.Request) {
+		data, err := os.ReadFile("/perm/wifi/wpa_supplicant.conf")
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		// Redact PSK values.
+		lines := strings.Split(string(data), "\n")
+		for i, line := range lines {
+			if strings.HasPrefix(strings.TrimSpace(line), "psk=") {
+				lines[i] = "\tpsk=<REDACTED>"
+			}
+		}
+		w.Header().Set("Content-Type", "text/plain")
+		fmt.Fprintln(w, strings.Join(lines, "\n"))
 	})
 
 	mux.HandleFunc("/wifi/ap/disable", func(w http.ResponseWriter, r *http.Request) {
