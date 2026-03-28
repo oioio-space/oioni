@@ -6,11 +6,16 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
 // realWpaConn communicates with wpa_supplicant over a Unix socket.
+// mu serialises all SendCommand calls: the wpa_supplicant DGRAM protocol is
+// strictly request-response, so concurrent send+receive pairs on the same
+// socket interleave responses — mu prevents that.
 type realWpaConn struct {
+	mu        sync.Mutex
 	conn      *net.UnixConn
 	localPath string
 }
@@ -29,6 +34,8 @@ func dialWpa(ctrlPath, localPath string) (*realWpaConn, error) {
 }
 
 func (c *realWpaConn) SendCommand(cmd string) (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if err := c.conn.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
 		return "", err
 	}
@@ -87,6 +94,8 @@ func parseWpaStatus(raw string) Status {
 			st.State = v
 		case "ssid":
 			st.SSID = v
+		case "ip_address":
+			st.IP = v
 		}
 	}
 	return st

@@ -95,7 +95,7 @@ func newTestAPManager(t *testing.T) (*APManager, *fakeAPProcess) {
 		DNS:     []string{"8.8.8.8"},
 	}
 	conf := &confManager{dir: dir}
-	ap := newAPManager(cfg, conf, proc, "/user/hostapd", "/user/iw")
+	ap := newAPManager(cfg, "wlan0", conf, proc, "/user/hostapd", "/user/iw")
 	ap.assignIPFn = func(_, _ string) error { return nil } // no netlink in tests
 	return ap, proc
 }

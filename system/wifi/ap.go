@@ -18,19 +18,21 @@ import (
 
 // APConfig configures the WiFi access point.
 type APConfig struct {
-	SSID    string   `json:"ssid"`
-	PSK     string   `json:"psk"`     // empty = open network
-	Channel int      `json:"channel"` // default 6 (BCM43430 is 2.4GHz only)
-	IP      string   `json:"ip"`      // CIDR for uap0, e.g. "192.168.4.1/24"
-	DNS     []string `json:"dns"`     // DNS servers advertised to DHCP clients
+	SSID      string   `json:"ssid"`
+	PSK       string   `json:"psk"`       // empty = open network
+	Channel   int      `json:"channel"`   // default 6 (BCM43430 is 2.4GHz only)
+	IP        string   `json:"ip"`        // CIDR for uap0, e.g. "192.168.4.1/24"
+	DNS       []string `json:"dns"`       // DNS servers advertised to DHCP clients
+	EnableNAT bool     `json:"enableNat"` // masquerade AP traffic through the STA interface
 }
 
 // defaultAPConfig returns the default AP configuration.
 func defaultAPConfig() APConfig {
 	return APConfig{
-		Channel: 6,
-		IP:      "192.168.4.1/24",
-		DNS:     []string{"8.8.8.8", "8.8.4.4"},
+		Channel:   6,
+		IP:        "192.168.4.1/24",
+		DNS:       []string{"8.8.8.8", "8.8.4.4"},
+		EnableNAT: true,
 	}
 }
 
@@ -45,6 +47,7 @@ type APStatus struct {
 // interface. Created and destroyed by Manager.SetMode.
 type APManager struct {
 	cfg        APConfig
+	staIface   string // STA interface name (e.g. "wlan0"), used for NAT masquerade
 	hostapdBin string
 	iwBin      string
 	conf       *confManager
@@ -58,9 +61,10 @@ type APManager struct {
 }
 
 // newAPManager creates an APManager. Called by Manager.SetMode.
-func newAPManager(cfg APConfig, conf *confManager, proc processRunner, hostapdBin, iwBin string) *APManager {
+func newAPManager(cfg APConfig, staIface string, conf *confManager, proc processRunner, hostapdBin, iwBin string) *APManager {
 	return &APManager{
 		cfg:        cfg,
+		staIface:   staIface,
 		hostapdBin: hostapdBin,
 		iwBin:      iwBin,
 		conf:       conf,
@@ -99,6 +103,14 @@ func (a *APManager) Start(ctx context.Context) error {
 	if err := a.dhcp.Start(innerCtx); err != nil {
 		// DHCP failure is non-fatal: AP is still operational.
 		log.Printf("wifi/ap: DHCP server error: %v", err)
+	}
+
+	// Enable NAT so AP clients can reach the internet through the STA interface.
+	if a.cfg.EnableNAT {
+		if err := enableNAT(a.staIface); err != nil {
+			// NAT failure is non-fatal: AP is still usable on the local subnet.
+			log.Printf("wifi/ap: NAT error: %v", err)
+		}
 	}
 
 	return nil
@@ -146,6 +158,9 @@ func (a *APManager) startHostapd(ctx context.Context) error {
 // Stop cancels the supervisor goroutine, shuts down the DHCP server, sends
 // SIGINT to hostapd, and deletes the uap0 interface.
 func (a *APManager) Stop() {
+	if a.cfg.EnableNAT {
+		disableNAT()
+	}
 	if a.cancel != nil {
 		a.cancel()
 	}

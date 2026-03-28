@@ -185,6 +185,7 @@ func main() {
 		WpaSupplicantBin: "/user/wpa_supplicant",
 		HostapdBin:       "/user/hostapd",
 		IwBin:            "/user/iw",
+		UdhcpcBin: busybox + " udhcpc",
 		ConfDir:          "/perm/wifi",
 		CtrlDir:          "/var/run/wpa_supplicant",
 		Iface:            "wlan0",

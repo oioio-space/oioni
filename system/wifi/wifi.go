@@ -60,6 +60,7 @@ type Config struct {
 	WpaSupplicantBin string // e.g. "/user/wpa_supplicant"
 	HostapdBin       string // e.g. "/user/hostapd" (AP mode)
 	IwBin            string // e.g. "/user/iw" (AP mode — virtual interface creation)
+	UdhcpcBin        string // e.g. "/bin/udhcpc" (empty = no DHCP client on STA iface)
 	ConfDir          string // e.g. "/perm/wifi"
 	CtrlDir          string // e.g. "/var/run/wpa_supplicant"
 	Iface            string // e.g. "wlan0"
@@ -83,6 +84,7 @@ type SavedNetwork struct {
 type Status struct {
 	State   string // "COMPLETED", "ASSOCIATING", "DISCONNECTED", ...
 	SSID    string
+	IP      string // e.g. "192.168.0.15" — from wpa_supplicant if DHCP lease is active
 	Enabled bool
 }
 
@@ -223,6 +225,7 @@ func (m *Manager) Start(ctx context.Context) error {
 			m.conn = conn
 			m.connMu.Unlock()
 			go m.restoreMode(ctx)
+			m.startSTADHCPWatcher(ctx, m.cfg.UdhcpcBin)
 			return nil
 		}
 		select {
@@ -247,9 +250,60 @@ func (m *Manager) restoreMode(ctx context.Context) {
 		m.mu.Unlock()
 		return
 	}
+	// Wait for the STA to provide a channel (freq= in STATUS).
+	// BCM43430 requires STA+AP on the same channel; starting AP before the STA
+	// reports its frequency would cause a channel conflict and block association.
+	if err := m.waitForSTAChannel(ctx, 60*time.Second); err != nil {
+		log.Printf("wifi: restoreMode: STA channel unknown after 60 s, skipping AP restore: %v", err)
+		return
+	}
 	// Re-apply AP mode (ignoring error — STA is already working).
 	if err := m.SetMode(ctx, mode); err != nil {
 		_ = err // non-fatal: AP may not start if config missing or binary absent
+	}
+}
+
+// waitForSTAChannel polls wpa_supplicant until freq= appears in STATUS
+// (i.e. the STA is fully connected and its channel is known).
+// Checks immediately on first call, then every 2 s.
+func (m *Manager) waitForSTAChannel(ctx context.Context, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		if m.staChannel() > 0 {
+			return nil
+		}
+		if !time.Now().Before(deadline) {
+			return fmt.Errorf("timed out after %s", timeout)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(2 * time.Second):
+		}
+	}
+}
+
+// waitForSTA polls wpa_supplicant until the STA interface shows an SSID in
+// STATUS (indicating 802.11 association is complete).  Checks immediately on
+// first call, then every 2 s.
+//
+// Note: on BCM43430, wpa_state may remain "ASSOCIATED" (not "COMPLETED") even
+// when the link is fully functional; SSID presence is the reliable indicator.
+func (m *Manager) waitForSTA(ctx context.Context, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		st, err := m.Status()
+		if err == nil && st.SSID != "" {
+			return nil
+		}
+		if !time.Now().Before(deadline) {
+			return fmt.Errorf("timed out after %s", timeout)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(2 * time.Second):
+		}
 	}
 }
 
@@ -386,6 +440,11 @@ func (m *Manager) Status() (Status, error) {
 	}
 	st := parseWpaStatus(raw)
 	st.Enabled = m.isEnabled()
+	// ip_address= in STATUS is only set by wpa_supplicant's own DHCP client.
+	// When using an external DHCP client (udhcpc), read the IP from the interface.
+	if st.IP == "" {
+		st.IP = ifaceIPv4(m.cfg.Iface)
+	}
 	return st, nil
 }
 
@@ -539,10 +598,24 @@ func (m *Manager) reconnectWPALocked(ctx context.Context) {
 // Goroutine-safe. AP transitions happen live; disabling AP restarts wpa_supplicant
 // to reset the BCM43430 firmware (brcmf_escan_timeout after uap0 deletion).
 func (m *Manager) SetMode(ctx context.Context, mode Mode) error {
-	// Detect STA channel BEFORE locking (send is not under m.mu).
+	// Validate AP config and detect STA channel BEFORE locking (send is not under m.mu).
 	// BCM43430 requires STA and AP to share the same channel for concurrent operation.
-	var detectedChannel int
+	// freq= only appears in wpa_supplicant STATUS when wpa_state=COMPLETED (not ASSOCIATED).
+	// Wait up to 15 s for the STA to fully authenticate before reading the channel.
+	var (
+		apCfg         APConfig
+		detectedChannel int
+	)
 	if mode.AP {
+		var err error
+		apCfg, err = m.conf.readAPConfig()
+		if err != nil {
+			return fmt.Errorf("SetMode: read AP config: %w", err)
+		}
+		if apCfg.SSID == "" {
+			return fmt.Errorf("SetMode: AP config has no SSID — call SetAPConfig first")
+		}
+		_ = m.waitForSTA(ctx, 15*time.Second) // best-effort; ignore timeout error
 		detectedChannel = m.staChannel()
 	}
 
@@ -553,19 +626,13 @@ func (m *Manager) SetMode(ctx context.Context, mode Mode) error {
 
 	// AP: turn on
 	if mode.AP && !prev.AP {
-		cfg, err := m.conf.readAPConfig()
-		if err != nil {
-			return fmt.Errorf("SetMode: read AP config: %w", err)
-		}
-		if cfg.SSID == "" {
-			return fmt.Errorf("SetMode: AP config has no SSID — call SetAPConfig first")
-		}
+		cfg := apCfg
 		// Use STA channel so AP and STA share the same frequency (BCM43430 constraint).
 		if detectedChannel > 0 {
 			cfg.Channel = detectedChannel
 			log.Printf("wifi: AP channel auto-set to %d (STA channel)", detectedChannel)
 		}
-		apMgr := newAPManager(cfg, m.conf, m.proc, m.cfg.HostapdBin, m.cfg.IwBin)
+		apMgr := newAPManager(cfg, m.cfg.Iface, m.conf, m.proc, m.cfg.HostapdBin, m.cfg.IwBin)
 		if err := apMgr.Start(ctx); err != nil {
 			return fmt.Errorf("SetMode: start AP: %w", err)
 		}

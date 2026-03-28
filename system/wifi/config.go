@@ -181,6 +181,8 @@ func (c *confManager) writeAPConfig(cfg APConfig) error {
 
 // readAPConfig reads the persisted APConfig from apconfig.json.
 // Returns the default APConfig if the file does not exist.
+// Fields absent from the JSON file (e.g. added in later versions) retain
+// their default values so existing configs remain forward-compatible.
 func (c *confManager) readAPConfig() (APConfig, error) {
 	data, err := os.ReadFile(filepath.Join(c.dir, "apconfig.json"))
 	if os.IsNotExist(err) {
@@ -189,7 +191,8 @@ func (c *confManager) readAPConfig() (APConfig, error) {
 	if err != nil {
 		return APConfig{}, err
 	}
-	var cfg APConfig
+	// Start from defaults so fields added after the config was saved are not zero.
+	cfg := defaultAPConfig()
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return APConfig{}, fmt.Errorf("parse apconfig.json: %w", err)
 	}
