@@ -501,6 +501,12 @@ func (m *Manager) send(cmd string) (string, error) {
 	return conn.SendCommand(cmd)
 }
 
+// DebugCmd sends a raw wpa_supplicant command and returns the response.
+// For diagnostic use only.
+func (m *Manager) DebugCmd(cmd string) (string, error) {
+	return m.send(cmd)
+}
+
 // GetMode returns the current operating mode. Goroutine-safe.
 func (m *Manager) GetMode() Mode {
 	m.mu.Lock()

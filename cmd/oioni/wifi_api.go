@@ -123,6 +123,21 @@ func startWiFiAPI(ctx context.Context, mgr *wifi.Manager) {
 		fmt.Fprintln(w, "AP mode enabled (STA+AP)")
 	})
 
+	mux.HandleFunc("/wifi/debug/wpa-cmd", func(w http.ResponseWriter, r *http.Request) {
+		cmd := r.FormValue("cmd")
+		if cmd == "" {
+			http.Error(w, "cmd required", 400)
+			return
+		}
+		out, err := mgr.DebugCmd(cmd)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain")
+		fmt.Fprintln(w, out)
+	})
+
 	mux.HandleFunc("/wifi/debug/wpa-log", func(w http.ResponseWriter, r *http.Request) {
 		data, err := os.ReadFile("/perm/wifi/wpa.log")
 		if err != nil {
