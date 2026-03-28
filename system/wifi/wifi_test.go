@@ -165,18 +165,19 @@ func TestManager_Connect_SavePreservesExistingPSK(t *testing.T) {
 		"ADD_NETWORK":   "0",
 	}}
 	m := newTestManager(t, wpa)
-	// Seed a saved PSK.
+	// Seed a saved PSK — write stores it as hex PMK.
 	if err := m.conf.write([]savedNetwork{{SSID: "HomeNet", PSK: "originalPSK"}}); err != nil {
 		t.Fatal(err)
 	}
-	// Connect with empty PSK and save — should preserve "originalPSK".
+	wantPMK := wpa2PMK("originalPSK", "HomeNet")
+	// Connect with empty PSK and save — should preserve the hex PMK.
 	if err := m.Connect("HomeNet", "", true); err != nil {
 		t.Fatal(err)
 	}
 	nets, _ := m.conf.read()
 	for _, n := range nets {
-		if n.SSID == "HomeNet" && n.PSK != "originalPSK" {
-			t.Errorf("PSK overwritten: got %q, want %q", n.PSK, "originalPSK")
+		if n.SSID == "HomeNet" && n.PSK != wantPMK {
+			t.Errorf("PSK overwritten: got %q, want %q", n.PSK, wantPMK)
 		}
 	}
 }

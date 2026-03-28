@@ -17,8 +17,21 @@ func TestWriteReadConf(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0].SSID != "TestNet" || got[0].PSK != "secret123" {
+	// PSK is stored as pre-computed hex PMK to avoid wpa_supplicant passphrase issues.
+	wantPMK := wpa2PMK("secret123", "TestNet")
+	if len(got) != 1 || got[0].SSID != "TestNet" || got[0].PSK != wantPMK {
 		t.Fatalf("unexpected result: %+v", got)
+	}
+	// Round-trip: write the already-hashed PMK, read back the same PMK (no double-hash).
+	if err := cfg.write(got); err != nil {
+		t.Fatal(err)
+	}
+	got2, err := cfg.read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got2) != 1 || got2[0].PSK != wantPMK {
+		t.Fatalf("double-hash on round-trip: %+v", got2)
 	}
 }
 
@@ -45,7 +58,7 @@ func TestMigrateWifiJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(nets) != 1 || nets[0].SSID != "OldNet" || nets[0].PSK != "oldpass" {
+	if len(nets) != 1 || nets[0].SSID != "OldNet" || nets[0].PSK != wpa2PMK("oldpass", "OldNet") {
 		t.Fatalf("unexpected networks after migration: %+v", nets)
 	}
 
@@ -76,7 +89,7 @@ func TestMigrateWifiJSONPskKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(nets) != 1 || nets[0].SSID != "MyNet" || nets[0].PSK != "mypassword" {
+	if len(nets) != 1 || nets[0].SSID != "MyNet" || nets[0].PSK != wpa2PMK("mypassword", "MyNet") {
 		t.Fatalf("unexpected networks: %+v", nets)
 	}
 }

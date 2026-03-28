@@ -2,11 +2,15 @@
 package wifi
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"golang.org/x/crypto/pbkdf2"
 )
 
 // savedNetwork is a single entry in wpa_supplicant.conf: an SSID with optional PSK.
@@ -44,7 +48,16 @@ func (c *confManager) write(networks []savedNetwork) error {
 		b.WriteString("network={\n")
 		fmt.Fprintf(&b, "    ssid=%q\n", n.SSID)
 		if n.PSK != "" {
-			fmt.Fprintf(&b, "    psk=%q\n", n.PSK)
+			// Write as pre-computed hex PMK (64 hex chars, no quotes) rather than
+			// a quoted passphrase. This avoids wpa_supplicant passphrase-parsing
+			// failures observed on BCM43430 and eliminates the TEMP-DISABLED cycle.
+			// If PSK is already a 64-char hex PMK (from a previous read), use it
+			// directly to avoid double-hashing.
+			pmk := n.PSK
+			if !isPMK(pmk) {
+				pmk = wpa2PMK(n.PSK, n.SSID)
+			}
+			fmt.Fprintf(&b, "    psk=%s\n", pmk)
 			b.WriteString("    key_mgmt=WPA-PSK\n")
 			b.WriteString("    proto=RSN\n")
 			b.WriteString("    pairwise=CCMP\n")
@@ -201,6 +214,27 @@ func (c *confManager) readAPConfig() (APConfig, error) {
 		return APConfig{}, fmt.Errorf("parse apconfig.json: %w", err)
 	}
 	return cfg, nil
+}
+
+// isPMK reports whether s is a pre-computed WPA2 PMK (64 lowercase hex characters).
+func isPMK(s string) bool {
+	if len(s) != 64 {
+		return false
+	}
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			return false
+		}
+	}
+	return true
+}
+
+// wpa2PMK computes the WPA2 Pre-shared Master Key (PMK) via PBKDF2-SHA1.
+// The result is a 64-character lower-case hex string suitable for use as
+// an unquoted psk= value in wpa_supplicant.conf.
+func wpa2PMK(passphrase, ssid string) string {
+	dk := pbkdf2.Key([]byte(passphrase), []byte(ssid), 4096, 32, sha1.New)
+	return hex.EncodeToString(dk)
 }
 
 // writeHostapdConf generates hostapd.conf from APConfig into confDir.
