@@ -45,6 +45,10 @@ func (c *confManager) write(networks []savedNetwork) error {
 		fmt.Fprintf(&b, "    ssid=%q\n", n.SSID)
 		if n.PSK != "" {
 			fmt.Fprintf(&b, "    psk=%q\n", n.PSK)
+			b.WriteString("    key_mgmt=WPA-PSK\n")
+			b.WriteString("    proto=RSN\n")
+			b.WriteString("    pairwise=CCMP\n")
+			b.WriteString("    group=CCMP\n")
 		} else {
 			b.WriteString("    key_mgmt=NONE\n")
 		}

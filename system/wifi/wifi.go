@@ -163,6 +163,12 @@ func (m *Manager) Start(ctx context.Context) error {
 	if err := m.conf.migrateIfNeeded(); err != nil {
 		_ = err // non-fatal — log in caller
 	}
+	// Rewrite wpa_supplicant.conf to ensure explicit WPA2 crypto params are present.
+	// Older conf files lacked key_mgmt/proto/pairwise/group entries, causing
+	// auto-detection failures on BCM43430 that result in repeated TEMP-DISABLED.
+	if nets, err := m.conf.read(); err == nil && len(nets) > 0 {
+		_ = m.conf.write(nets) // best-effort: rewrite with current format
+	}
 
 	// Load brcmfmac kernel modules (firmware must be in /lib/firmware/brcm/).
 	for _, mod := range []string{
