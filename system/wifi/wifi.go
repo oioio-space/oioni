@@ -363,6 +363,21 @@ func (m *Manager) listNetworkID(ssid string) string {
 	return ""
 }
 
+// removeNetworksBySSID removes all wpa_supplicant network entries for the given SSID.
+// Used to clean up TEMP-DISABLED entries before re-adding a fresh entry.
+func (m *Manager) removeNetworksBySSID(ssid string) {
+	out, err := m.send("LIST_NETWORKS")
+	if err != nil {
+		return
+	}
+	for _, line := range strings.Split(out, "\n") {
+		parts := strings.Split(line, "\t")
+		if len(parts) >= 2 && parts[1] == ssid {
+			_, _ = m.send("REMOVE_NETWORK " + strings.TrimSpace(parts[0]))
+		}
+	}
+}
+
 // Connect connects to an SSID with optional PSK. If save is true, persists credentials.
 // When psk is empty and the SSID is already configured in wpa_supplicant (loaded from
 // wpa_supplicant.conf on startup), Connect selects the existing network entry directly
@@ -380,6 +395,11 @@ func (m *Manager) Connect(ssid, psk string, save bool) error {
 			return nil
 		}
 	}
+
+	// Remove existing entries for this SSID to avoid accumulating TEMP-DISABLED entries.
+	// wpa_supplicant marks a network TEMP-DISABLED after repeated auth failures; adding
+	// new entries each call compounds the problem rather than recovering from it.
+	m.removeNetworksBySSID(ssid)
 
 	id, err := m.send("ADD_NETWORK")
 	if err != nil {
