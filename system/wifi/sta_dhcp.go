@@ -45,6 +45,10 @@ func (m *Manager) startSTADHCPWatcher(ctx context.Context, udhcpcBin string) {
 				connected := st.SSID != ""
 				wasConnected := lastSSID != ""
 				if connected && !wasConnected {
+					// Re-disable power save on each reconnect: BCM43430 re-enables
+					// it during association. Without this, power save beacon misses
+					// cause disconnections every ~20s.
+					m.disablePowerSave()
 					go runSTADHCP(ctx, m.cfg.Iface, udhcpcBin)
 				}
 				lastSSID = st.SSID
