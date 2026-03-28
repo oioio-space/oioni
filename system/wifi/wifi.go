@@ -30,6 +30,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -224,6 +225,7 @@ func (m *Manager) Start(ctx context.Context) error {
 			m.connMu.Lock()
 			m.conn = conn
 			m.connMu.Unlock()
+			m.disablePowerSave()
 			go m.restoreMode(ctx)
 			m.startSTADHCPWatcher(ctx, m.cfg.UdhcpcBin)
 			return nil
@@ -235,6 +237,21 @@ func (m *Manager) Start(ctx context.Context) error {
 		}
 	}
 	return fmt.Errorf("wpa_supplicant control socket not ready after 3s")
+}
+
+// disablePowerSave turns off BCM43430 WiFi power management via iw.
+// Power save causes periodic beacon misses and results in brief disconnections
+// every ~20–30 s on the BCM43430 (Pi Zero 2W). Best-effort: logs on failure.
+func (m *Manager) disablePowerSave() {
+	if m.cfg.IwBin == "" {
+		return
+	}
+	out, err := exec.Command(m.cfg.IwBin, "dev", m.cfg.Iface, "set", "power_save", "off").CombinedOutput()
+	if err != nil {
+		log.Printf("wifi: disable power save: %v: %s", err, out)
+		return
+	}
+	log.Printf("wifi: power save disabled on %s", m.cfg.Iface)
 }
 
 // restoreMode reads the persisted Mode and re-activates AP if needed.
