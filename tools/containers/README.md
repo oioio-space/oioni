@@ -1,48 +1,64 @@
 # tools/containers
 
-Gestion du cycle de vie d'un container Podman unique et des processus qui s'y exécutent.
+Gestion du cycle de vie d'un container Podman unique et des processus qui s'y executent, avec workaround integre pour le bug de transmission de signaux `podman exec`.
 
 ## Package independant
 
-Ce package n'a aucune dependance interne au projet. Il ne depend que de la bibliotheque standard Go (`os`, `os/exec`, `sync`, `bufio`, `context`).
+Ce package n'a aucune dependance interne au projet oioni. Il depends uniquement de la bibliotheque standard Go : `os`, `os/exec`, `sync`, `bufio`, `context`, `strconv`, `strings`.
+
+---
 
 ## Exemple simple
 
 Demarrer un container a partir d'une image locale, lancer un outil, lire sa sortie.
 
 ```go
-mgr := containers.NewManager(containers.Config{
-    Image:          "oioni/impacket:arm64",
-    Name:           "oioni-impacket",
-    Network:        "host",
-    LocalImagePath: "/usr/share/oioni/impacket-arm64.tar.gz",
-})
-defer mgr.Close()
+package main
 
-proc, err := mgr.Start(ctx, "run-1", "secretsdump.py",
-    []string{"admin@192.168.1.10", "-p", "Password1"})
-if err != nil {
-    log.Fatal(err)
-}
+import (
+    "errors"
+    "fmt"
+    "log"
+    "context"
+    "github.com/oioio-space/oioni/tools/containers"
+)
 
-for line := range proc.Lines() {
-    fmt.Println(line)
-}
+func main() {
+    ctx := context.Background()
 
-if err := proc.Wait(); err != nil {
-    var exitErr *containers.ExitError
-    if errors.As(err, &exitErr) {
-        log.Printf("exit code %d", exitErr.ExitCode())
+    mgr := containers.NewManager(containers.Config{
+        Image:          "oioni/impacket:arm64",
+        Name:           "oioni-impacket",
+        Network:        "host",
+        LocalImagePath: "/usr/share/oioni/impacket-arm64.tar.gz",
+    })
+    defer mgr.Close()
+
+    proc, err := mgr.Start(ctx, "dump-1", "secretsdump.py",
+        []string{"admin@192.168.1.10", "-p", "Password1"})
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    for line := range proc.Lines() {
+        fmt.Println(line)
+    }
+
+    if err := proc.Wait(); err != nil {
+        var exitErr *containers.ExitError
+        if errors.As(err, &exitErr) {
+            log.Printf("exit code %d", exitErr.ExitCode())
+        }
     }
 }
 ```
 
-## Exemple avance
+---
 
-Arret propre avec escalade SIGTERM -> SIGKILL, plusieurs processus simultanes, injection du CmdFactory pour les tests.
+## Exemple avance : arret propre, processus paralleles, injection pour tests
 
 ```go
-// Production : manager reel avec capabilities reseau
+// Production : manager avec capabilities reseau.
 mgr := containers.NewManager(containers.Config{
     Image:          "oioni/impacket:arm64",
     Name:           "oioni-impacket",
@@ -77,60 +93,51 @@ fake := containers.NewManager(containers.Config{Name: "test"},
     }),
 )
 
-// Construire un Process sans ProcManager, pour tester les parseurs.
+// Construire un Process sans ProcManager pour tester les parseurs de sortie.
 ch := make(chan string, 2)
 ch <- "admin:500:aad3b435b51404eeaad3b435b51404ee:31d6cfe0d16ae931b73c59d7e0c089c0:::"
 close(ch)
 proc := containers.NewProcess(ch,
-    func() error { return nil },
-    func() error { return nil },
+    func() error { return nil }, // wait
+    func() error { return nil }, // kill
 )
 for line := range proc.Lines() {
     fmt.Println(line)
 }
 ```
 
+---
+
 ## Points d'attention
 
-**Chargement de l'image : premier demarrage ~75s**
-La premiere invocation de `Start()` execute `podman load` si l'image n'est pas encore presente.
-Le chargement prend environ 75 secondes pour une image ~125 MiB.
-Les demarrages suivants sont instantanes : le manager detecte l'image via `podman image exists` avant de tenter le chargement.
+**Chargement de l'image au premier demarrage : ~75 secondes.**
+La premiere invocation de `Start()` appelle `podman load -i <LocalImagePath>` si l'image n'est pas encore presente. Pour une image ARM64 d'environ 125 Mo compresse, ce chargement prend environ 75 secondes. Les demarrages suivants sont instantanes : `podman image exists` est verifie avant toute tentative de chargement.
 
-**TMPDIR doit pointer sur /perm/tmp pendant le chargement**
-`podman load` decompresse l'archive dans un repertoire temporaire.
-Le rootfs tmpfs de gokrazy est trop petit pour une image ARM64 (~125 MiB decompresse).
-Le manager force automatiquement `TMPDIR=/perm/tmp` (carte SD) uniquement pendant `podman load`, en creant le repertoire si necessaire.
-Ce comportement ne s'applique pas aux autres invocations podman.
+**TMPDIR doit pointer sur `/perm/tmp` pendant `podman load`.**
+`podman load` decompresse l'archive dans un repertoire temporaire. Le tmpfs `/tmp` de gokrazy est trop petit pour une image ~125 Mo decompresse. Le manager force automatiquement `TMPDIR=/perm/tmp` (carte SD) uniquement pendant `podman load`, en creant le repertoire si necessaire. Ce surchargeage ne s'applique pas aux autres invocations podman.
 
-**Signaux non transmis par `podman exec` (bug Podman #19486)**
-`podman exec` ne transmet pas les signaux POSIX au processus cible.
-Contournement integre : la commande est lancee via `sh -c "echo $$; exec tool args"`.
-La premiere ligne de stdout est le PID du processus dans le container.
-`Stop()` et `Kill()` envoient ensuite le signal via `podman exec kill -TERM/-KILL <PID>`,
-et non au processus `podman exec` lui-meme.
+**Les signaux ne sont pas transmis par `podman exec` (bug Podman #19486).**
+`podman exec` ne transmet pas les signaux POSIX au processus cible. Contournement integre : la commande est lancee via `sh -c "echo $$; exec tool args"`. La premiere ligne de stdout est le PID du processus dans le container (`containerPID`). `Stop()` et `Kill()` envoient ensuite le signal via `podman exec <container> kill -TERM/-KILL <PID>`, et non au processus `podman exec` lui-meme. Si le PID n'a pas pu etre lu (premiere ligne non numerique), `Kill()` devient un no-op.
 
-**Resolution des binaires sur gokrazy**
-`exec.LookPath` utilise le PATH du processus parent, qui peut ne pas inclure `/usr/local/bin`
-sur gokrazy (repertoire d'installation de podman).
-Le `CmdFactory` par defaut resout les binaires via `os.Stat` dans `/user`, `/usr/local/bin`,
-`/usr/bin`, `/bin` — sans passer par PATH.
+**Resolution des binaires via `os.Stat`, pas via `PATH`.**
+`exec.LookPath` utilise le PATH du processus parent, qui peut ne pas inclure `/usr/local/bin` sur gokrazy. Le `CmdFactory` par defaut recherche les binaires dans `/user`, `/usr/local/bin`, `/usr/bin`, `/bin` via `os.Stat`. Pour les tests, utiliser `WithCmdFactory` pour injecter un fake.
 
-**Nommage des processus**
-Chaque processus enregistre doit avoir un nom unique.
-`Start()` retourne `ErrAlreadyRunning` si le nom est deja utilise.
-Le slot est libere automatiquement a la fin du processus (goroutine watcher).
+**Un seul container par ProcManager.**
+`ProcManager` gere un unique container (`podman run ... sleep infinity`). Si plusieurs images differentes sont necessaires simultanement, creer plusieurs managers distincts avec des noms differents. La collision de nom de container au redemarrage est geree automatiquement : `podman stop` + `podman rm` sont appeles avant chaque `podman run`.
 
-**Capacite du channel de lignes**
-Le channel interne a une capacite de 64 lignes.
-Les lignes en exces sont abandonnees si le consommateur ne lit pas assez vite.
-Ne pas utiliser `Lines()` pour des outils a sortie volumineuse sans lecteur dedie.
+**Nommage des processus : unicite obligatoire.**
+`Start()` retourne `ErrAlreadyRunning` si le nom est deja utilise. Le slot est libere automatiquement via une goroutine watcher qui attend la fin du processus. Reutiliser le meme nom apres la fin du processus est valide.
 
-**Un seul container par ProcManager**
-`ProcManager` gere un unique container (`podman run … sleep infinity`).
-Si plusieurs images differentes sont necessaires, creer plusieurs managers distincts.
-La collision de nom de container au redemarrage est geree automatiquement
-(`podman stop` + `podman rm` avant chaque `podman run`).
+**Capacite du channel de lignes : 64.**
+Les lignes en exces sont silencieusement abandonnees si le consommateur ne lit pas assez vite. Ne pas utiliser `Lines()` pour des outils a sortie tres volumineuse sans consommateur dedie tournant dans une goroutine separee.
+
+**`Close()` est concurrent-safe avec `Start()`.**
+Le flag `m.closed` est protege par un mutex. Un `Start()` concurrent avec `Close()` retourne `ErrManagerClosed`. Un `Start()` qui commence avant `Close()` mais n'est pas encore enregistre est detecte par la double verification du flag dans le chemin post-lancement.
+
+**`initContainer` est appele une seule fois via `sync.Once`.**
+Si le premier appel a `Start()` echoue (ex. image corrompue), `m.startErr` est fixe et tous les appels subsequents a `Start()` retournent la meme erreur sans retenter. Pour recommencer, creer un nouveau `ProcManager`.
+
+---
 
 ## Reference API
 
@@ -139,7 +146,7 @@ La collision de nom de container au redemarrage est geree automatiquement
 ```go
 type Config struct {
     Image          string   // nom de l'image, ex. "oioni/impacket:arm64"
-    Name           string   // nom du container, unique par instance
+    Name           string   // nom du container, unique par instance ProcManager
     Network        string   // ex. "host" pour acces a l'interface USB gadget
     Caps           []string // capabilities Linux, ex. ["NET_RAW", "NET_ADMIN"]
     LocalImagePath string   // si renseigne, charge l'image depuis ce .tar/.tar.gz
@@ -149,70 +156,80 @@ type Config struct {
 ### Constructeurs
 
 ```go
-// Creer un manager. Aucune E/S a la construction.
+// NewManager cree un ProcManager. Aucune E/S a la construction.
 func NewManager(cfg Config, opts ...Option) *ProcManager
 
-// Remplacer la factory exec.Cmd pour toutes les invocations podman (tests).
+// WithCmdFactory remplace la factory exec.Cmd pour toutes les invocations podman.
+// La factory est appelee une fois par invocation ; le *exec.Cmd retourne est utilise une seule fois.
+// Usage principal : tests, sans modifier le comportement de production.
 func WithCmdFactory(factory func(name string, args ...string) *exec.Cmd) Option
 ```
 
 ### ProcManager
 
 ```go
-// Initialise le container (une seule fois) puis lance l'executable via podman exec.
-// name doit etre unique parmi les processus en cours.
+// Start initialise le container (une seule fois via sync.Once) puis lance l'executable
+// via podman exec. name doit etre unique parmi les processus en cours.
+// Retourne ErrAlreadyRunning si name est deja utilise, ErrManagerClosed si Close() a ete appele.
 func (m *ProcManager) Start(ctx context.Context, name, executable string, args []string) (*Process, error)
 
-// Envoie SIGTERM, attend jusqu'a 10s, puis escalade en SIGKILL.
+// Stop envoie SIGTERM au processus identifie par containerPID, attend jusqu'a 10s,
+// puis escalade en SIGKILL si le processus n'est pas encore termine.
 func (m *ProcManager) Stop(ctx context.Context, name string) error
 
-// Envoie SIGKILL immediatement.
+// Kill envoie SIGKILL immediatement via "podman exec container kill -KILL <PID>".
 func (m *ProcManager) Kill(name string) error
 
-// Retourne les noms de tous les processus en cours.
+// List retourne les noms de tous les processus actuellement enregistres.
 func (m *ProcManager) List() []string
 
-// Tue tous les processus en cours, attend leur fin, supprime le container.
+// Close tue tous les processus en cours, attend leur fin (wg.Wait),
+// puis supprime le container via "podman rm -f".
 func (m *ProcManager) Close() error
 ```
 
 ### Process
 
 ```go
-// Constructeur public — permet de creer des processus fictifs dans les tests
+// NewProcess construit un Process a partir de composants pre-existants.
+// API publique stable : permet de creer des processus fictifs dans les tests
 // sans instancier de ProcManager.
+//   lines — channel de lignes, ferme quand le processus se termine.
+//   wait  — bloque jusqu'a la fin ; retourne nil ou *ExitError. Idempotent via sync.Once.
+//   kill  — envoie SIGKILL ; peut retourner une erreur si le processus est deja termine.
 func NewProcess(lines <-chan string, wait func() error, kill func() error) *Process
 
-// Channel des lignes stdout. Ferme quand le processus se termine.
+// Lines retourne le channel de lignes stdout. Ferme quand le processus se termine.
 func (p *Process) Lines() <-chan string
 
-// Bloque jusqu'a la fin du processus. Idempotent : les appels suivants
-// retournent le resultat mis en cache sans bloquer.
+// Wait bloque jusqu'a la fin du processus. Retourne nil ou *ExitError.
+// Idempotent : les appels suivants retournent le resultat mis en cache sans bloquer.
 func (p *Process) Wait() error
 
-// Envoie SIGKILL immediatement.
+// Kill envoie SIGKILL immediatement.
 func (p *Process) Kill() error
 
-// Retourne false une fois que Wait() a retourne.
+// Running retourne false une fois que Wait() a retourne (process.done ferme).
 func (p *Process) Running() bool
 ```
 
 ### Erreurs
 
 ```go
-// Binaire podman introuvable dans les repertoires de recherche.
+// ErrPodmanNotFound : binaire podman introuvable dans les repertoires de recherche.
 var ErrPodmanNotFound = errors.New("containers: podman binary not found")
 
-// Start() appele avec un nom deja enregistre.
+// ErrAlreadyRunning : Start() appele avec un nom deja enregistre dans le registry.
 var ErrAlreadyRunning = errors.New("containers: process already running")
 
-// Start() appele apres Close().
+// ErrManagerClosed : Start() appele apres Close().
 var ErrManagerClosed = errors.New("containers: manager is closed")
 
-// Retourne par Process.Wait() quand le processus se termine avec un code non nul.
+// ExitError : retourne par Process.Wait() quand le processus se termine avec un code non nul.
 type ExitError struct {
-    Err *exec.ExitError
+    Err *exec.ExitError // jamais nil
 }
-func (e *ExitError) ExitCode() int
+func (e *ExitError) Error() string
 func (e *ExitError) Unwrap() error
+func (e *ExitError) ExitCode() int
 ```
