@@ -1,0 +1,136 @@
+{
+// Package ducky — pigeon PEG grammar for Ducky Script V2.
+// Regenerate with: go generate ./drivers/usbgadget/ducky/
+package ducky
+
+import (
+	"strconv"
+	"strings"
+)
+
+// toString converts a pigeon-matched value to a plain string.
+// Pigeon returns []byte for literals/classes and []interface{} for repetitions.
+func toString(v interface{}) string {
+	if v == nil {
+		return ""
+	}
+	switch x := v.(type) {
+	case []byte:
+		return string(x)
+	case string:
+		return x
+	case []interface{}:
+		var b strings.Builder
+		for _, c := range x {
+			b.WriteString(toString(c))
+		}
+		return b.String()
+	}
+	return ""
+}
+
+var _ = strconv.Atoi // used in action blocks
+}
+
+// Script is a sequence of lines followed by EOF.
+Script <- instrs:Line* EOF {
+	var result []Instruction
+	for _, v := range instrs.([]interface{}) {
+		if v != nil {
+			result = append(result, v.(Instruction))
+		}
+	}
+	return result, nil
+}
+
+// Line matches one command line or a blank/comment-only line.
+Line <- _ instr:Command _ EOL { return instr, nil }
+      / _ EOL { return nil, nil }
+
+// Command matches any single Ducky Script instruction.
+// Order matters: longer/more-specific keywords must appear before shorter ones.
+Command <- Rem
+         / StringLn
+         / StringCmd
+         / DefaultDelay
+         / Delay
+         / KeyLine
+
+// REM — comment line, ignored during execution.
+Rem <- "REM" (!EOL .)* { return nil, nil }
+
+// STRINGLN — type text followed by Enter.
+StringLn <- "STRINGLN" HWS text:RestOfLine {
+	return StringInstr{Text: toString(text), WithEnter: true}, nil
+}
+
+// STRING — type text without pressing Enter.
+StringCmd <- "STRING" HWS text:RestOfLine {
+	return StringInstr{Text: toString(text), WithEnter: false}, nil
+}
+
+// DEFAULT_DELAY (also DEFAULTDELAY) — set inter-command delay in milliseconds.
+DefaultDelay <- ("DEFAULT_DELAY" / "DEFAULTDELAY") HWS n:Digits {
+	ms, _ := strconv.Atoi(toString(n))
+	return DefaultDelayInstr{MS: ms}, nil
+}
+
+// DELAY — pause execution for N milliseconds.
+Delay <- "DELAY" HWS n:Digits {
+	ms, _ := strconv.Atoi(toString(n))
+	return DelayInstr{MS: ms}, nil
+}
+
+// KeyLine — one or more key tokens separated by horizontal whitespace.
+// Examples: ENTER / CTRL ALT DELETE / GUI r / SHIFT F10
+KeyLine <- first:KeyToken rest:(HWS k:KeyToken { return k, nil })* {
+	keys := []string{toString(first)}
+	for _, v := range rest.([]interface{}) {
+		keys = append(keys, toString(v))
+	}
+	return KeyInstr{Keys: keys}, nil
+}
+
+// KeyToken — a single key name. Longer names must appear before their prefixes.
+// After each named token, a word boundary (non-KeyChar or EOL) is required
+// so that "CTRL" does not accidentally match the first 4 chars of "CONTROL".
+KeyToken <- name:( "COMMAND" / "CONTROL" / "WINDOWS" /
+                   "CTRL" / "ALT" / "SHIFT" / "GUI" /
+                   "RETURN" / "ENTER" /
+                   "ESCAPE" / "ESC" /
+                   "BACKSPACE" /
+                   "TAB" /
+                   "DELETE" / "DEL" /
+                   "INSERT" / "HOME" / "END" /
+                   "PAGEUP" / "PAGEDOWN" /
+                   "UPARROW" / "DOWNARROW" / "LEFTARROW" / "RIGHTARROW" /
+                   "CAPSLOCK" / "NUMLOCK" / "SCROLLLOCK" /
+                   "PRINTSCREEN" / "PAUSE" / "BREAK" /
+                   "SPACE" / "MENU" / "APP" /
+                   "F12" / "F11" / "F10" /
+                   "F9" / "F8" / "F7" / "F6" / "F5" / "F4" / "F3" / "F2" / "F1"
+                 ) !KeyChar { return toString(name), nil }
+           / ch:KeyChar { return toString(ch), nil }
+
+// RestOfLine — everything up to (but not including) the line terminator.
+RestOfLine <- chars:(!EOL .)+ { return toString(chars), nil }
+
+// Digits — one or more ASCII decimal digits.
+Digits <- d:[0-9]+ { return toString(d), nil }
+
+// KeyChar — any non-whitespace, non-EOL character (single keystroke character).
+KeyChar <- [^ \t\r\n]
+
+// HWS — required horizontal whitespace (spaces/tabs).
+HWS <- [ \t]+
+
+// _ — optional horizontal whitespace.
+_ <- [ \t]*
+
+// EOL — line terminator: CRLF, CR, or LF.
+// ParseScript always appends \n, so EOF is not needed here and must NOT be
+// included: a zero-width EOF match causes Line* to loop forever at end-of-input.
+EOL <- "\r\n" / "\r" / "\n"
+
+// EOF — end of input.
+EOF <- !.
