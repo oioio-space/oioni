@@ -22,6 +22,9 @@
 //
 // AP mode creates the uap0 virtual interface and starts hostapd + a DHCP server.
 // Scanner always works when STA is active (SCAN/SCAN_RESULTS on wpa_supplicant).
+//
+// Sentinel errors: ErrNotStarted is returned by any method called before Start;
+// ErrWPATimeout is returned when polling exceeds its deadline.
 package wifi
 
 import (
@@ -95,13 +98,13 @@ type Manager struct {
 	cfg     Config
 	conf    *confManager
 	proc    processRunner
-	newConn func(ctrlPath, localPath string) (wpaConn, error) // injectable for tests
+	newConn func(ctrlPath, localPath string) (wpaSocket, error) // injectable for tests
 
 	// connMu guards conn. Use RLock for reads in send(), Lock when replacing conn
 	// (e.g. during reconnectWPALocked). Kept separate from mu so that concurrent
 	// STA commands (Status, Scan) do not block AP mode transitions.
 	connMu sync.RWMutex
-	conn   wpaConn // nil until Start is called
+	conn   wpaSocket // nil until Start is called
 
 	mu    sync.Mutex
 	mode  Mode
@@ -114,7 +117,7 @@ func New(cfg Config) *Manager {
 		cfg:  cfg,
 		conf: &confManager{dir: cfg.ConfDir},
 		proc: &realProcess{},
-		newConn: func(ctrlPath, localPath string) (wpaConn, error) {
+		newConn: func(ctrlPath, localPath string) (wpaSocket, error) {
 			return dialWpa(ctrlPath, localPath)
 		},
 	}
@@ -248,7 +251,7 @@ func (m *Manager) Start(ctx context.Context) error {
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
-	return fmt.Errorf("wpa_supplicant control socket not ready after 3s")
+	return fmt.Errorf("wpa_supplicant control socket not ready after 3s: %w", ErrWPATimeout)
 }
 
 // disablePowerSave turns off BCM43430 WiFi power management via iw.
@@ -302,7 +305,7 @@ func (m *Manager) waitForSTAChannel(ctx context.Context, timeout time.Duration) 
 			return nil
 		}
 		if !time.Now().Before(deadline) {
-			return fmt.Errorf("timed out after %s", timeout)
+			return fmt.Errorf("timed out after %s: %w", timeout, ErrWPATimeout)
 		}
 		select {
 		case <-ctx.Done():
@@ -326,7 +329,7 @@ func (m *Manager) waitForSTA(ctx context.Context, timeout time.Duration) error {
 			return nil
 		}
 		if !time.Now().Before(deadline) {
-			return fmt.Errorf("timed out after %s", timeout)
+			return fmt.Errorf("timed out after %s: %w", timeout, ErrWPATimeout)
 		}
 		select {
 		case <-ctx.Done():
@@ -545,7 +548,7 @@ func (m *Manager) send(cmd string) (string, error) {
 	conn := m.conn
 	m.connMu.RUnlock()
 	if conn == nil {
-		return "", fmt.Errorf("wifi: not started")
+		return "", ErrNotStarted
 	}
 	return conn.SendCommand(cmd)
 }

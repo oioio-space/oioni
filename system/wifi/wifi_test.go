@@ -1,6 +1,7 @@
 package wifi
 
 import (
+	"errors"
 	"os"
 	"sync"
 	"testing"
@@ -14,7 +15,7 @@ func (f *fakeProcess) StartProcess(_ string, _ []string) (*os.Process, error) {
 	return nil, nil
 }
 
-// fakeWpa satisfies wpaConn for tests.
+// fakeWpa satisfies wpaSocket for tests.
 type fakeWpa struct {
 	mu        sync.Mutex
 	responses map[string]string
@@ -47,7 +48,7 @@ func newTestManager(t *testing.T, wpa *fakeWpa) *Manager {
 		cfg:     Config{ConfDir: dir, Iface: "wlan0"},
 		conf:    &confManager{dir: dir},
 		proc:    proc,
-		newConn: func(_, _ string) (wpaConn, error) { return wpa, nil },
+		newConn: func(_, _ string) (wpaSocket, error) { return wpa, nil },
 	}
 	m.conn = wpa
 	return m
@@ -267,5 +268,19 @@ func TestManager_Send_ConcurrentSafe(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+// TestManager_DebugCmd_NotStarted verifies that calling DebugCmd on a manager
+// whose Start has not been called returns ErrNotStarted.
+func TestManager_DebugCmd_NotStarted(t *testing.T) {
+	dir := t.TempDir()
+	m := &Manager{
+		cfg:  Config{ConfDir: dir, Iface: "wlan0"},
+		conf: &confManager{dir: dir},
+	}
+	_, err := m.DebugCmd("STATUS")
+	if !errors.Is(err, ErrNotStarted) {
+		t.Errorf("expected ErrNotStarted, got %v", err)
+	}
 }
 

@@ -283,7 +283,7 @@ func newTestManagerForMode(t *testing.T) *Manager {
 		cfg:  Config{ConfDir: dir, Iface: "wlan0"},
 		conf: &confManager{dir: dir},
 		proc: proc,
-		newConn: func(_, _ string) (wpaConn, error) {
+		newConn: func(_, _ string) (wpaSocket, error) {
 			return wpa, nil
 		},
 	}

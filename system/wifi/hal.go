@@ -3,9 +3,9 @@ package wifi
 
 import "os"
 
-// wpaConn is the interface over a wpa_supplicant control socket connection.
+// wpaSocket is the interface over a wpa_supplicant control socket connection.
 // Real implementation: realWpaConn (wpa.go). Test implementation: fakeWpaConn.
-type wpaConn interface {
+type wpaSocket interface {
 	// SendCommand sends a single-line command and returns the full response.
 	SendCommand(cmd string) (string, error)
 	Close() error
