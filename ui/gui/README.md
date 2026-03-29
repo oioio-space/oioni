@@ -1,151 +1,247 @@
-# gui — retained-mode GUI framework for the Waveshare 2.13" Touch e-Paper HAT
+# ui/gui
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/oioio-space/oioni/ui/gui.svg)](https://pkg.go.dev/github.com/oioio-space/oioni/ui/gui)
+Framework GUI retained-mode pour ecran e-ink Waveshare 2.13" Touch HAT.
 
-`gui` is a minimal, retained-mode widget toolkit built for the
-**Waveshare 2.13" Touch e-Paper HAT** (250×122 px, black/white) running on a
-**Raspberry Pi Zero 2W** under [gokrazy](https://gokrazy.org).
+## Package independant
 
-It handles scene navigation, touch routing with debounce, and automatic
-anti-ghosting refreshes — letting application code focus on layout and logic.
+`ui/gui` n'a **aucune dependance** vers `drivers/epd` ni `drivers/touch`. Il
+definit ses propres types (`DisplayMode`, `TouchPoint`, `TouchEvent`,
+`ScreenWidth/Height`) et expose l'interface `Display` pour le hardware.
 
-> **Requires** the `drivers/epd` and `drivers/touch` modules from this
-> repository (or any type that satisfies the `gui.Display` interface).
+Pour utiliser avec le vrai ecran, il suffit d'envelopper `*epd.Display` avec
+un adaptateur de 5 lignes (voir `cmd/oioni/epaper.go`, type `epdAdapter`).
+Cela permet de tester `ui/gui` sans hardware en injectant un `Display` fictif.
 
-## Install
-
-```sh
-go get github.com/oioio-space/oioni/ui/gui
-```
-
-## Quick start
+## Exemple simple
 
 ```go
-package main
-
 import (
     "context"
-
-    "github.com/oioio-space/oioni/drivers/epd"
-    "github.com/oioio-space/oioni/drivers/touch"
+    "fmt"
     "github.com/oioio-space/oioni/ui/gui"
 )
 
-func main() {
-    // Open hardware.
-    d, err := epd.New(epd.Config{
-        SPIDevice: "/dev/spidev0.0", SPISpeed: 4_000_000,
-        PinRST: 17, PinDC: 25, PinCS: 8, PinBUSY: 24,
+// myDisplay implemente gui.Display (wrapping *epd.Display en production)
+nav := gui.NewNavigator(myDisplay)
+
+count := 0
+lbl := gui.NewLabel("Tap me!")
+lbl.SetAlign(gui.AlignCenter)
+
+btn := gui.NewButton("Incrementer")
+btn.OnClick(func() {
+    count++
+    lbl.SetText(fmt.Sprintf("Compteur : %d", count))
+})
+
+scene := &gui.Scene{
+    Widgets: []gui.Widget{
+        gui.NewVBox(
+            gui.NewStatusBar("Demo", ""),
+            gui.NewDivider(),
+            gui.Expand(lbl),
+            gui.FixedSize(btn, 32),
+        ),
+    },
+}
+
+nav.Push(scene)
+
+ctx, cancel := context.WithCancel(context.Background())
+defer cancel()
+nav.Run(ctx, touchEvents) // bloque jusqu'a cancel()
+```
+
+## Exemple avance : navigation multi-scenes et goroutine
+
+```go
+// Scene racine avec bouton qui pousse une sous-scene
+root := &gui.Scene{
+    Widgets: []gui.Widget{
+        gui.NewVBox(
+            gui.NewStatusBar("Accueil", ""),
+            gui.Expand(gui.NewLabel("Ecran principal")),
+            gui.FixedSize(settingsBtn, 30),
+        ),
+    },
+}
+
+// Sous-scene de reglages
+settingsBtn.OnClick(func() {
+    toggle := gui.NewToggle("WiFi", false)
+    toggle.OnChange(func(on bool) {
+        // Appel depuis callback OnClick -> dans la goroutine de Run, pas de race
+        applyWifi(on)
     })
-    if err != nil {
-        panic(err)
-    }
-    defer d.Close()
-
-    tc, err := touch.Open(touch.Config{I2CDevice: "/dev/i2c-1", PinINT: 4})
-    if err != nil {
-        panic(err)
-    }
-    defer tc.Close()
-
-    // Build the navigator (manages scene stack + refresh strategy).
-    nav := gui.NewNavigator(d)
-
-    // Build a screen from widgets and layout containers.
-    lbl := gui.NewLabel("Hello, e-ink!")
-    lbl.SetAlign(gui.AlignCenter)
-
-    count := 0
-    btn := gui.NewButton("Tap me")
-    btn.OnClick(func() {
-        count++
-        lbl.SetText(fmt.Sprintf("Tapped %d times", count))
-    })
-
-    screen := &gui.Scene{
+    nav.Push(&gui.Scene{
         Widgets: []gui.Widget{
             gui.NewVBox(
-                gui.NewStatusBar("oioni", ""),
+                gui.NewStatusBar("Reglages", ""),
                 gui.NewDivider(),
-                gui.Expand(lbl),
-                gui.FixedSize(btn, 32),
+                toggle,
+                gui.FixedSize(gui.NewButton("Retour"), 28),
             ),
         },
-        OnEnter: func() { lbl.SetText("Hello, e-ink!") },
-    }
+        OnLeave: func() { saveSettings() },
+    })
+})
 
-    // Push the first screen (triggers a full refresh).
-    if err := nav.Push(screen); err != nil {
-        panic(err)
-    }
+// Mise a jour depuis une goroutine externe (time.AfterFunc, etc.)
+go func() {
+    time.Sleep(10 * time.Second)
+    // Dispatch est obligatoire depuis une goroutine externe
+    nav.Dispatch(func() {
+        lbl.SetText("Mise a jour depuis goroutine")
+        nav.RequestRender()
+    })
+}()
 
-    // Run blocks until the context is cancelled, routing touch events.
-    ctx, cancel := context.WithCancel(context.Background())
-    defer cancel()
-    nav.Run(ctx, tc.Events())
-
-    d.Sleep()
-}
+// Idle sleep apres 5 minutes d'inactivite
+nav = gui.NewNavigatorWithIdle(myDisplay, 5*time.Minute)
+// Reveil depuis une goroutine :
+nav.Wake()
 ```
 
-## Widgets
+## Points d'attention
 
-| Widget | Constructor | Notes |
-|--------|-------------|-------|
-| Label | `NewLabel(text)` | Single line; `SetAlign` for left/center/right |
-| Button | `NewButton(label)` | `OnClick(fn)` callback; touch feedback via inversion |
-| ProgressBar | `NewProgressBar()` | `SetValue(0.0–1.0)`; use `Expand()` for full width |
-| StatusBar | `NewStatusBar(left, right)` | Black bar, white text; left defaults to current time |
-| Spacer | `NewSpacer()` | Invisible; use with `Expand()` for flexible gaps |
-| Divider | `NewDivider()` | 1 px separator; horizontal in VBox, vertical in HBox |
+**Zero dependance hardware** : `ui/gui` ne connait pas `drivers/epd` ni
+`drivers/touch`. Pour brancher le vrai ecran, implementer l'interface
+`gui.Display` (generalement 5 lignes de delegation) et produire des
+`gui.TouchEvent` a partir des evenements du touch controller.
 
-## Layout
+**Dispatch obligatoire hors de Run** : `Push`, `Pop`, et les mutations d'etat
+des widgets ne sont pas concurrent-safe avec `Run`. Tout appel depuis une
+goroutine externe doit passer par `nav.Dispatch(fn)`.
 
-| Container | Constructor | Notes |
-|-----------|-------------|-------|
-| VBox | `NewVBox(children...)` | Vertical stack |
-| HBox | `NewHBox(children...)` | Horizontal row |
-| Fixed | `NewFixed(w, h)` + `Put(w, x, y)` | Absolute pixel positioning |
-| Overlay | `NewOverlay(content, align)` | Float content over a scene |
-| WithPadding | `WithPadding(px, w)` | Uniform padding on all 4 sides |
+**hScrollable et top-level** : un widget implementant `hScrollable` (gestes
+horizontaux) doit etre un element direct de `Scene.Widgets`. S'il est emballe
+dans un conteneur (`VBox`, `HBox`...), le Navigator ne le trouvera pas. Les
+widgets `Touchable`, en revanche, sont cherches recursivement dans l'arbre.
 
-Wrap a child with `Expand(w)` to fill remaining space, or `FixedSize(w, px)`
-to pin its main-axis size.
+**SetBounds sur les conteneurs racine** : le Navigator n'appelle pas
+`SetBounds` automatiquement sur les widgets de `Scene.Widgets`. Les conteneurs
+racine doivent recevoir leurs bounds explicitement, par exemple :
+```go
+vbox.SetBounds(image.Rect(0, 0, gui.ScreenHeight, gui.ScreenWidth))
+// Apres Rot90 : ScreenHeight=250 (largeur logique), ScreenWidth=122 (hauteur logique)
+```
+Les helpers `ShowAlert`, `ShowMenu`, et `ShowTextInput` s'en chargent
+automatiquement.
 
-## Refresh behavior
+**Divider 2px** : les separateurs mesurent 2 px d'epaisseur. 1 px disparait
+souvent lors d'un refresh partiel e-ink.
 
-Partial refreshes (~0.3 s) are used for routine widget updates. A full
-refresh (~2 s) is forced on `Push`/`Pop` and automatically every 50 partial
-updates to clear ghosting. The anti-ghost interval is controlled internally
-by `refreshManager`.
+**anti-ghosting** : toutes les 5 refreshs partiels (`antiGhostN=5`), un
+refresh complet est force automatiquement. `RequestRegenerate()` declenche un
+cycle noir-blanc (~4s) pour le keep-alive quotidien.
 
-## Custom widgets
+**Polices et texte** : les polices embedees ne couvrent que l'ASCII. Utiliser
+`canvas.EmbeddedFont(size)` avec les tailles 8, 12, 16, 20 ou 24.
 
-Embed `gui.BaseWidget` and implement `Draw`, `PreferredSize`, and `MinSize`:
+**Widgets Stoppable** : les widgets qui possedent des goroutines internes
+doivent implementer `Stop()`. Le Navigator appelle `Stop()` recursivement sur
+tous les widgets d'une scene depilee.
+
+## Reference API
+
+### Navigator
+
+| Fonction / Methode | Description |
+|---|---|
+| `NewNavigator(d Display) *Navigator` | Cree un Navigator avec rafraichissement standard |
+| `NewNavigatorWithIdle(d Display, timeout time.Duration) *Navigator` | Comme ci-dessus avec sleep apres inactivite |
+| `nav.Push(s *Scene) error` | Empile une scene, declenche un refresh partial |
+| `nav.Pop() error` | Depile la scene du haut, full refresh si retour a la racine |
+| `nav.PopTo(depth int) error` | Depile jusqu'a la profondeur donnee en une seule passe |
+| `nav.Run(ctx context.Context, events <-chan TouchEvent)` | Boucle principale (bloquant) |
+| `nav.Dispatch(fn func())` | Enfile fn pour execution dans la goroutine de Run |
+| `nav.RequestRender()` | Declenche un re-rendu (non bloquant) |
+| `nav.RequestRegenerate()` | Cycle purge noir-blanc (~4s) pour keep-alive |
+| `nav.Wake()` | Reveille l'ecran si en veille, force un full refresh |
+| `nav.Depth() int` | Nombre de scenes dans la pile |
+
+### Types principaux
+
+| Type | Description |
+|---|---|
+| `Scene` | `Widgets []Widget`, `OnEnter func()`, `OnLeave func()`, `Title string` |
+| `DisplayMode` | `ModeFull`, `ModePartial`, `ModeFast` |
+| `TouchPoint` | `ID uint8`, `X, Y uint16`, `Size uint8` |
+| `TouchEvent` | `Points []TouchPoint`, `Time time.Time` |
+
+### Widgets integres
+
+| Widget | Constructeur | Description |
+|---|---|---|
+| Label | `NewLabel(text)` | Texte sur une ligne ; `SetFont`, `SetAlign` |
+| Button | `NewButton(label)` | `OnClick(fn)` ; feedback visuel par inversion |
+| ProgressBar | `NewProgressBar()` | `SetValue(0.0-1.0)` ; utiliser `Expand` pour pleine largeur |
+| StatusBar | `NewStatusBar(left, right)` | Barre noire texte blanc ; left = horloge si vide |
+| Toggle | `NewToggle(label, on)` | Interrupteur on/off ; `OnChange(fn)` |
+| Checkbox | `NewCheckbox(label, checked)` | Case a cocher ; `OnChange(fn)` |
+| Slider | `NewSlider(min, max, value)` | Selecteur de valeur horizontal ; `OnChange(fn)` |
+| Menu | `NewMenu(items)` | Liste scrollable d'items ; supporte les icones |
+| NavButton | `NewNavButton(label)` | Bouton avec etat actif/desactive |
+| NavBar | `NewNavBar(path...)` | Fil d'Ariane (ex. "Accueil > Config") |
+| Carousel | `NewCarousel(items)` | Carrousel d'icones horizontal |
+| ScrollList | `NewScrollList(rows)` | Liste scrollable de lignes texte |
+| ActionSidebar | `NewActionSidebar(btns...)` | Barre d'actions laterale |
+| ClockWidget | `NewClock()` | Horloge auto-rafraichie chaque minute |
+| QRCode | `NewQRCode(content)` | QR code vectoriel |
+| NetworkStatusBar | `NewNetworkStatusBar()` | Barre operateur (WiFi, IP...) |
+| ImageWidget | `NewImageWidget(img)` | Rendu `image.Image` mis a l'echelle |
+| ArcWidget | `NewArcWidget(...)` | Arc / indicateur circulaire |
+| Spacer | `NewSpacer()` | Vide invisible ; utiliser avec `Expand` |
+| Divider | `NewDivider()` | Separateur 2px, horizontal ou vertical |
+
+### Conteneurs de layout
+
+| Conteneur | Constructeur | Description |
+|---|---|---|
+| VBox | `NewVBox(children...)` | Empilement vertical |
+| HBox | `NewHBox(children...)` | Rangee horizontale |
+| Fixed | `NewFixed(w, h)` + `Put(w, x, y)` | Positionnement absolu en pixels |
+| Overlay | `NewOverlay(content, align)` | Flottant par-dessus la scene |
+| WithPadding | `WithPadding(px, w)` | Marge uniforme sur les 4 cotes |
+
+Modificateurs de layout pour enfants de VBox/HBox :
+
+| Modificateur | Description |
+|---|---|
+| `Expand(w)` | Le widget prend tout l'espace restant sur l'axe principal |
+| `FixedSize(w, px)` | Fixe la taille sur l'axe principal a px pixels |
+
+### Widget personnalise
 
 ```go
-type MyWidget struct {
+type MonWidget struct {
     gui.BaseWidget
-    text string
+    valeur string
 }
 
-func (w *MyWidget) Draw(c *canvas.Canvas) {
-    c.DrawText(w.Bounds().Min.X, w.Bounds().Min.Y, w.text,
-               canvas.EmbeddedFont(12), canvas.Black)
+func (w *MonWidget) Draw(c *canvas.Canvas) {
+    c.DrawRect(w.Bounds(), canvas.White, true)
+    c.DrawText(w.Bounds().Min.X+2, w.Bounds().Min.Y+2,
+               w.valeur, canvas.EmbeddedFont(12), canvas.Black)
 }
-func (w *MyWidget) PreferredSize() image.Point { return image.Pt(80, 20) }
-func (w *MyWidget) MinSize() image.Point       { return image.Pt(20, 20) }
-```
+func (w *MonWidget) PreferredSize() image.Point { return image.Pt(80, 20) }
+func (w *MonWidget) MinSize() image.Point       { return image.Pt(20, 16) }
 
-Implement `gui.Touchable` to receive touch events:
-
-```go
-func (w *MyWidget) HandleTouch(pt touch.TouchPoint) bool {
-    // handle touch; return true to consume the event
+// Touch (optionnel)
+func (w *MonWidget) HandleTouch(pt gui.TouchPoint) bool {
+    w.valeur = "touche"
+    w.SetDirty()
     return true
 }
+
+// Stop (optionnel, si goroutines internes)
+func (w *MonWidget) Stop() { /* arreter les goroutines */ }
 ```
 
-## License
+### Helpers de haut niveau
 
-MIT — see [LICENSE](../../LICENSE) at the repository root.
+| Fonction | Description |
+|---|---|
+| `ShowAlert(nav, title, msg, btns...)` | Pousse une scene modale alerte avec boutons |
+| `ShowMenu(nav, title, items)` | Pousse une scene menu scrollable |
+| `ShowTextInput(nav, placeholder, maxLen, onConfirm)` | Pousse une scene saisie texte avec clavier |

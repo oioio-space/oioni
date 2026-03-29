@@ -1,70 +1,100 @@
-# imgvol — disk image manager for gokrazy
+# imgvol
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/oioio-space/oioni/system/imgvol.svg)](https://pkg.go.dev/github.com/oioio-space/oioni/system/imgvol)
+Crée, formate et monte en loop des fichiers image disque (FAT, exFAT, ext4) exposés comme `afero.Fs`.
 
-Creates, formats, and loop-mounts disk image files on Linux ARM64 (gokrazy).
-Static `mkfs` binaries are embedded via `go:embed` — no host tools required on
-the target system.
+## Package indépendant
 
-**Supported filesystems:** FAT (`vfat`), exFAT, ext4.
+`imgvol` n'a aucune dépendance interne au projet. Il ne dépend que de la bibliothèque standard Go, de `golang.org/x/sys/unix` (ioctls loop) et de `github.com/spf13/afero`.
 
-## Install
-
-```sh
-go get github.com/oioio-space/oioni/system/imgvol
-```
-
-## Quick start
+## Exemple simple
 
 ```go
-import (
-    "github.com/oioio-space/oioni/system/imgvol"
-    "github.com/spf13/afero"
-)
-
-// Create a 64 MiB FAT image on the persistent partition
+// Créer une image de 64 Mo en FAT et y écrire un fichier.
 if err := imgvol.Create("/perm/data.img", 64<<20, imgvol.FAT); err != nil {
     log.Fatal(err)
 }
 
-// Open loop-mounts the image and exposes it as afero.Fs
 vol, err := imgvol.Open("/perm/data.img")
 if err != nil {
     log.Fatal(err)
 }
 defer vol.Close()
 
-// Standard afero operations
-afero.WriteFile(vol.FS, "notes.txt", []byte("hello"), 0644)
-data, _ := afero.ReadFile(vol.FS, "notes.txt")
-fmt.Println(string(data)) // hello
+if err := afero.WriteFile(vol.FS, "hello.txt", []byte("hello"), 0644); err != nil {
+    log.Fatal(err)
+}
 ```
 
-## Filesystems
+## Exemple avancé — image ext4 persistante avec vérification d'existence
 
-| Constant | Type | Notes |
-|----------|------|-------|
-| `imgvol.FAT` | vfat | Best host compatibility (Windows/macOS/Linux) |
-| `imgvol.ExFAT` | exfat | Large files, good host compatibility |
-| `imgvol.Ext4` | ext4 | Linux-only, journaled |
+```go
+const imgPath = "/perm/appdata.img"
+const imgSize = 256 << 20 // 256 Mo
 
-> NTFS is not supported — the ntfs3 kernel module causes panics on the gokrazy kernel.
+// Create échoue si l'image existe déjà : créer uniquement au premier démarrage.
+if _, err := os.Stat(imgPath); os.IsNotExist(err) {
+    if err := imgvol.Create(imgPath, imgSize, imgvol.Ext4); err != nil {
+        log.Fatalf("imgvol create: %v", err)
+    }
+}
 
-## Persistence
+vol, err := imgvol.Open(imgPath)
+if err != nil {
+    log.Fatalf("imgvol open: %v", err)
+}
+defer vol.Close()
 
-| Path | Survives reboot? |
-|------|-----------------|
-| `/perm/data.img` | Yes — gokrazy persistent partition |
-| `/tmp/data.img` | No — tmpfs, cleared on boot |
+// Le type de filesystem est détecté automatiquement à l'Open.
+log.Printf("type détecté : %s", vol.FSType)
 
-Store images under `/perm` for data that must survive reboots.
+// vol.FS est un afero.Fs — utilisable avec toute l'API afero.
+files, _ := afero.ReadDir(vol.FS, "/")
+for _, f := range files {
+    log.Println(f.Name())
+}
+```
 
-## Constraints
+## Points d'attention
 
-- Requires Linux root (loop device ioctls).
-- ARM64 only (embedded static binaries are ARM64).
-- One `Open` per image at a time (second `Open` fails with `EBUSY`).
+- **NTFS non supporté** : le kernel gokrazy n'inclut pas le driver NTFS. Seuls FAT (`vfat`), exFAT et ext4 fonctionnent.
+- **Un seul `Open()` par image à la fois** : ouvrir la même image une deuxième fois pendant qu'elle est déjà montée échoue avec `EBUSY` au niveau du mount. Appeler `vol.Close()` avant de ré-ouvrir.
+- **Root requis** : les ioctls loop (`LOOP_CTL_GET_FREE`, `LOOP_SET_FD`) et l'appel `mount` nécessitent des privilèges root.
+- **`Create` refuse d'écraser** : si le fichier existe déjà, `Create` retourne une erreur. Vérifier avec `os.Stat` avant si nécessaire.
+- **Images sparse** : `Create` utilise `os.Truncate` — les blocs non écrits n'occupent pas d'espace disque réel. Le `df` sur l'image montée montrera la taille totale déclarée.
+- **Point de montage dans `/tmp/imgvol/`** : sur gokrazy, `/tmp` est un tmpfs recréé à chaque boot. Le répertoire de montage est créé par `Open` et supprimé par `Close`. Un crash sans `Close` laisse un loop device orphelin — utiliser `defer vol.Close()` systématiquement.
+- **Les binaires `mkfs` sont embarqués en ARM64 uniquement** : `Create` ne fonctionnera pas sur une architecture différente (x86 en dev local). Formater l'image hors du device si nécessaire.
 
-## License
+## API reference
 
-MIT — see [LICENSE](../../LICENSE).
+### Types
+
+```go
+type FSType string
+
+const (
+    FAT   FSType = "vfat"
+    ExFAT FSType = "exfat"
+    Ext4  FSType = "ext4"
+)
+
+type Volume struct {
+    Path   string    // chemin du fichier image
+    FSType FSType    // type de filesystem détecté
+    FS     afero.Fs  // filesystem afero prêt à l'emploi
+}
+```
+
+### Fonctions
+
+```go
+// Create crée un fichier image sparse et le formate.
+// Retourne une erreur si le fichier existe déjà.
+func Create(path string, size int64, fstype FSType) error
+
+// Open détecte le filesystem, monte l'image en loop, et retourne un Volume.
+// Le type de filesystem est détecté automatiquement depuis les magic bytes.
+func Open(path string) (*Volume, error)
+
+// Close démonte l'image et libère le loop device.
+func (v *Volume) Close() error
+```
