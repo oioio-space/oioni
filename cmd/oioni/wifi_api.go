@@ -19,6 +19,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"strings"
 
 	wifi "github.com/oioio-space/oioni/system/wifi"
@@ -150,6 +151,44 @@ func startWiFiAPI(ctx context.Context, mgr *wifi.Manager) {
 		}
 		w.Header().Set("Content-Type", "text/plain")
 		w.Write(data)
+	})
+
+	mux.HandleFunc("/wifi/debug/dhcp", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		// Manually run udhcpc on wlan0 and return output.
+		cmd := exec.CommandContext(r.Context(), "/usr/local/bin/busybox",
+			"udhcpc", "-i", "wlan0", "-f", "-q", "-n", "-t", "5", "-v",
+			"-s", "/tmp/wifi-udhcpc.sh")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			fmt.Fprintf(w, "udhcpc error: %v\n%s\n", err, out)
+		} else {
+			fmt.Fprintf(w, "udhcpc ok:\n%s\n", out)
+		}
+		// After DHCP, show interface IP via ifconfig.
+		ifout, _ := exec.Command("/usr/local/bin/busybox", "ifconfig", "wlan0").CombinedOutput()
+		fmt.Fprintf(w, "\nifconfig wlan0:\n%s\n", ifout)
+	})
+
+	mux.HandleFunc("/wifi/debug/psk-prefix", func(w http.ResponseWriter, r *http.Request) {
+		data, err := os.ReadFile("/perm/wifi/wpa_supplicant.conf")
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain")
+		for _, line := range strings.Split(string(data), "\n") {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "psk=") {
+				val := strings.TrimPrefix(trimmed, "psk=")
+				val = strings.Trim(val, `"`)
+				if len(val) > 12 {
+					fmt.Fprintf(w, "psk prefix: %s... (len=%d)\n", val[:12], len(val))
+				} else {
+					fmt.Fprintf(w, "psk: %q (len=%d)\n", val, len(val))
+				}
+			}
+		}
 	})
 
 	mux.HandleFunc("/wifi/debug/wpa-conf", func(w http.ResponseWriter, r *http.Request) {

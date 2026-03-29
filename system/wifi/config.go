@@ -43,7 +43,9 @@ func (c *confManager) write(networks []savedNetwork) error {
 		return err
 	}
 	var b strings.Builder
-	b.WriteString("ctrl_interface=/var/run/wpa_supplicant\nctrl_interface_group=0\nupdate_config=1\n\n")
+	// update_config=0: prevent wpa_supplicant from rewriting the conf. We
+	// manage it exclusively via write() to avoid PSK corruption on exit.
+	b.WriteString("ctrl_interface=/var/run/wpa_supplicant\nctrl_interface_group=0\nupdate_config=0\n\n")
 	for _, n := range networks {
 		b.WriteString("network={\n")
 		fmt.Fprintf(&b, "    ssid=%q\n", n.SSID)

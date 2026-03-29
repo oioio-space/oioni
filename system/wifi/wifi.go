@@ -121,14 +121,15 @@ func New(cfg Config) *Manager {
 }
 
 // loadModule loads a kernel module by path relative to /lib/modules/<kernelRelease>/.
+// params is passed directly to the kernel (space-separated "key=value" pairs).
 // Ignores EEXIST/EBUSY (already loaded) and ENODEV/ENOENT (not present/applicable).
-func loadModule(mod string) error {
+func loadModule(mod, params string) error {
 	f, err := os.Open(filepath.Join("/lib/modules", kernelRelease, mod))
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	if err := unix.FinitModule(int(f.Fd()), "", 0); err != nil {
+	if err := unix.FinitModule(int(f.Fd()), params, 0); err != nil {
 		if err != unix.EEXIST && err != unix.EBUSY && err != unix.ENODEV && err != unix.ENOENT {
 			return fmt.Errorf("FinitModule(%v): %v", mod, err)
 		}
@@ -171,12 +172,17 @@ func (m *Manager) Start(ctx context.Context) error {
 	}
 
 	// Load brcmfmac kernel modules (firmware must be in /lib/firmware/brcm/).
-	for _, mod := range []string{
-		"kernel/drivers/net/wireless/broadcom/brcm80211/brcmutil/brcmutil.ko",
-		"kernel/drivers/net/wireless/broadcom/brcm80211/brcmfmac/brcmfmac.ko",
-		"kernel/drivers/net/wireless/broadcom/brcm80211/brcmfmac/wcc/brcmfmac-wcc.ko",
+	// feature_disable=0x82000 disables FWAUTH (bit 19) and WOWL_ARP_ND (bit 13),
+	// forcing wpa_supplicant to handle WPA2 in userspace. Without this, BCM43430
+	// firmware intercepts the 802.11 auth phase and silently fails (ASSOC-REJECT,
+	// no 4-way handshake attempted), causing persistent TEMP-DISABLED entries.
+	// roamoff=1 disables firmware-based roaming to prevent unexpected disconnects.
+	for _, entry := range []struct{ mod, params string }{
+		{"kernel/drivers/net/wireless/broadcom/brcm80211/brcmutil/brcmutil.ko", ""},
+		{"kernel/drivers/net/wireless/broadcom/brcm80211/brcmfmac/brcmfmac.ko", "feature_disable=0x82000 roamoff=1"},
+		{"kernel/drivers/net/wireless/broadcom/brcm80211/brcmfmac/wcc/brcmfmac-wcc.ko", ""},
 	} {
-		if err := loadModule(mod); err != nil {
+		if err := loadModule(entry.mod, entry.params); err != nil {
 			_ = err // non-fatal: module may already be present or not applicable
 		}
 	}
