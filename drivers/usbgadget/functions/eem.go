@@ -3,6 +3,7 @@ package functions
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 type EEMFunc struct {
@@ -39,8 +40,23 @@ func EEM(opts ...EEMOption) *EEMFunc {
 func (f *EEMFunc) TypeName() string     { return "eem" }
 func (f *EEMFunc) InstanceName() string { return f.instance }
 
-// IfName returns the kernel network interface name on the gadget side (e.g. "usb0").
-func (f *EEMFunc) IfName() (string, error) { return readIfName(f.configDir) }
+// IfName returns the kernel network interface name on the gadget side.
+// Falls back to MAC-based scan if configfs ifname is not updated by the kernel.
+func (f *EEMFunc) IfName() (string, error) {
+	name, err := readIfName(f.configDir)
+	if err == nil && name != "" && !strings.Contains(name, "unnamed") {
+		return name, nil
+	}
+	if f.devAddr != "" {
+		if iface, err2 := findIfaceByMAC(f.devAddr); err2 == nil {
+			return iface, nil
+		}
+	}
+	if err != nil {
+		return "", err
+	}
+	return "", fmt.Errorf("ifname not yet assigned (got %q)", name)
+}
 
 // ReadStats returns current network counters for this interface.
 func (f *EEMFunc) ReadStats() (NetStats, error) {

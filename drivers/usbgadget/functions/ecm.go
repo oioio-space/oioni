@@ -63,6 +63,10 @@ func (f *ECMFunc) IfName() (string, error) {
 	return "", fmt.Errorf("ifname not yet assigned (got %q)", name)
 }
 
+// HostAddr returns the host-side MAC address as stored in configfs.
+// Available only after g.Enable() has been called.
+func (f *ECMFunc) HostAddr() (string, error) { return readHostAddr(f.configDir) }
+
 // ReadStats returns the current network counters for this interface.
 func (f *ECMFunc) ReadStats() (NetStats, error) {
 	ifname, err := f.IfName()

@@ -3,6 +3,7 @@ package functions
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 type SubsetFunc struct {
@@ -40,7 +41,22 @@ func (f *SubsetFunc) TypeName() string     { return "geth" }
 func (f *SubsetFunc) InstanceName() string { return f.instance }
 
 // IfName returns the kernel network interface name on the gadget side.
-func (f *SubsetFunc) IfName() (string, error) { return readIfName(f.configDir) }
+// Falls back to MAC-based scan if configfs ifname is not updated by the kernel.
+func (f *SubsetFunc) IfName() (string, error) {
+	name, err := readIfName(f.configDir)
+	if err == nil && name != "" && !strings.Contains(name, "unnamed") {
+		return name, nil
+	}
+	if f.devAddr != "" {
+		if iface, err2 := findIfaceByMAC(f.devAddr); err2 == nil {
+			return iface, nil
+		}
+	}
+	if err != nil {
+		return "", err
+	}
+	return "", fmt.Errorf("ifname not yet assigned (got %q)", name)
+}
 
 // ReadStats returns current network counters for this interface.
 func (f *SubsetFunc) ReadStats() (NetStats, error) {

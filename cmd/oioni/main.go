@@ -14,8 +14,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"net"
-	"os/exec"
 	"os/signal"
 	"strings"
 	"syscall"
@@ -29,7 +27,6 @@ import (
 	"github.com/oioio-space/oioni/drivers/usbgadget/functions"
 
 	"github.com/spf13/afero"
-	"github.com/vishvananda/netlink"
 )
 
 func main() {
@@ -259,78 +256,36 @@ func main() {
 				ep.UpdateStatus("USB: "+strings.Join(gadgetFuncs, " "), "") // TODO: wire via ep.nsb.SetInterfaces/SetTools
 			}
 			if rndis != nil {
-				if ifname, err := rndis.IfName(); err == nil {
-					log.Printf("RNDIS → %s", ifname)
-				}
+				// RNDIS: wait for ifname, assign IP 10.43.0.1/24, start keepalive.
+				go func() {
+					if iface := waitAndSetupUSBNet(ctx, rndis, usbNetConfig{
+						label:  "RNDIS",
+						ipCIDR: "10.43.0.1/24",
+					}, netconfMgr, busybox); iface != "" {
+						go startUDHCPD(ctx, iface)
+					}
+				}()
 				go logStats(ctx, rndis, ecm)
 			}
 			if ecm != nil {
-				// Wait up to 5s for the kernel to assign the ECM interface name.
-				// g.Enable() returns before configfs ifname is written.
-				var ecmIface string
-				ecmDeadline := time.Now().Add(5 * time.Second)
-				for time.Now().Before(ecmDeadline) {
-					if name, err := ecm.IfName(); err == nil &&
-						name != "" && !strings.Contains(name, "unnamed") {
-						ecmIface = name
-						break
-					}
-					time.Sleep(100 * time.Millisecond)
+				// ECM: use HostAddr() from configfs so the ARP neighbor entry uses the
+				// actual kernel-assigned MAC rather than a hardcoded fallback.
+				ecmHostMAC := "02:00:00:cc:dd:01" // static fallback (matches WithECMHostAddr above)
+				if addr, err := ecm.HostAddr(); err == nil && addr != "" {
+					ecmHostMAC = addr
 				}
-				if ecmIface != "" {
-					log.Printf("ECM → %s", ecmIface)
-					if err := netconfMgr.ApplyEphemeral(ecmIface, netconf.IfaceCfg{
-						Mode: netconf.ModeStatic,
-						IP:   "10.42.0.1/24",
-					}); err != nil {
-						log.Printf("ECM netconf: %v", err)
-					} else {
-						log.Printf("ECM OK: 10.42.0.1/24 sur %s — SSH: ssh root@10.42.0.1", ecmIface)
-						go startUDHCPD(ctx, ecmIface)
-						// USB re-enumeration can briefly bring eth0 DOWN, removing the
-						// static IP. Re-apply every 3s to stay configured.
-						go func(iface string) {
-							t := time.NewTicker(3 * time.Second)
-							defer t.Stop()
-							for {
-								select {
-								case <-ctx.Done():
-									return
-								case <-t.C:
-									if err := netconfMgr.ApplyEphemeral(iface, netconf.IfaceCfg{
-										Mode: netconf.ModeStatic,
-										IP:   "10.42.0.1/24",
-									}); err != nil {
-										log.Printf("ECM keepalive: %v", err)
-									} else {
-										// ECM interface has hw_type=14 (not ARPHRD_ETHER=1), so the
-										// kernel won't do ARP automatically on either side.
-										// Fix: permanent static neighbor (Pi→PC) via netlink,
-										// and gratuitous ARP (PC→Pi) via arping.
-										if link, err := netlink.LinkByName(iface); err != nil {
-											log.Printf("ECM neigh link: %v", err)
-										} else {
-											pcMAC, _ := net.ParseMAC("02:00:00:cc:dd:01")
-											if err := netlink.NeighSet(&netlink.Neigh{
-												LinkIndex:    link.Attrs().Index,
-												IP:           net.ParseIP("10.42.0.2"),
-												HardwareAddr: pcMAC,
-												State:        netlink.NUD_PERMANENT,
-											}); err != nil {
-												log.Printf("ECM neigh set: %v", err)
-											}
-										}
-										if out, err := exec.Command(busybox, "arping", "-A", "-I", iface, "-c", "1", "10.42.0.1").CombinedOutput(); err != nil {
-											log.Printf("ECM arping: %v: %s", err, strings.TrimSpace(string(out)))
-										}
-										}
-								}
-							}
-						}(ecmIface)
+				go func(hostMAC string) {
+					if iface := waitAndSetupUSBNet(ctx, ecm, usbNetConfig{
+						label:      "ECM",
+						ipCIDR:     "10.42.0.1/24",
+						arpHostMAC: hostMAC, // hw_type=14 workaround: permanent ARP neighbor
+						arpHostIP:  "10.42.0.2",
+						arpSelfIP:  "10.42.0.1",
+					}, netconfMgr, busybox); iface != "" {
+						go startUDHCPD(ctx, iface)
+						log.Printf("ECM SSH: ssh root@10.42.0.1")
 					}
-				} else {
-					log.Printf("ECM: interface name not ready after 5s")
-				}
+				}(ecmHostMAC)
 			}
 			defer func() {
 				if err := g.Disable(); err != nil {

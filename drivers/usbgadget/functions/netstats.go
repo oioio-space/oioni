@@ -50,6 +50,16 @@ func readIfName(configDir string) (string, error) {
 	return strings.TrimSpace(string(b)), nil
 }
 
+// readHostAddr reads the host-side MAC address from configfs.
+// Available after g.Enable() has been called (kernel writes the assigned MAC).
+func readHostAddr(configDir string) (string, error) {
+	b, err := os.ReadFile(configDir + "/host_addr")
+	if err != nil {
+		return "", fmt.Errorf("read host_addr: %w", err)
+	}
+	return strings.TrimSpace(string(b)), nil
+}
+
 // readNetStats reads interface counters from /sys/class/net/<ifname>/statistics/.
 func readNetStats(ifname string) (NetStats, error) {
 	base := fmt.Sprintf("/sys/class/net/%s/statistics/", ifname)
