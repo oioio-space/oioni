@@ -64,8 +64,9 @@ type apDHCPServer struct {
 	leases map[[6]byte]net.IP // MAC → assigned IP
 	taken  map[[4]byte]bool   // IP (4-byte key) → in-use; O(1) pool search
 
-	conn *net.UDPConn
-	wg   sync.WaitGroup
+	conn   *net.UDPConn
+	wg     sync.WaitGroup
+	stopCh chan struct{} // closed by Stop() to unblock the ctx-watcher goroutine
 }
 
 // newAPDHCPServer creates an apDHCPServer from APConfig.
@@ -105,6 +106,7 @@ func newAPDHCPServer(iface string, cfg APConfig) *apDHCPServer {
 		end:    end,
 		leases: make(map[[6]byte]net.IP),
 		taken:  make(map[[4]byte]bool),
+		stopCh: make(chan struct{}),
 	}
 }
 
@@ -147,18 +149,25 @@ func (s *apDHCPServer) Start(ctx context.Context) error {
 			s.handle(conn, buf[:n], addr)
 		}
 	}()
-	// Cancel goroutine when ctx is done.
+	// Tracked watcher: closes conn when ctx is done OR Stop() is called.
+	// Added to wg so Stop() waits for this goroutine to exit.
+	s.wg.Add(1)
 	go func() {
-		<-ctx.Done()
-		conn.Close()
+		defer s.wg.Done()
+		defer conn.Close()
+		select {
+		case <-ctx.Done():
+		case <-s.stopCh:
+		}
 	}()
 	return nil
 }
 
-// Stop closes the DHCP server.
+// Stop shuts down the DHCP server and waits for all goroutines to exit,
+// including the context-watcher goroutine.
 func (s *apDHCPServer) Stop() {
-	if s.conn != nil {
-		s.conn.Close()
+	if s.stopCh != nil {
+		close(s.stopCh)
 	}
 	s.wg.Wait()
 }
@@ -209,24 +218,31 @@ func (s *apDHCPServer) handle(conn *net.UDPConn, pkt []byte, _ *net.UDPAddr) {
 
 // assignIP returns the IP assigned to mac, creating a stable lease if needed.
 // Uses an O(1) taken-set so pool searches stay fast even when the pool is full.
+// Uses uint32 arithmetic to avoid byte overflow when end[3]==255.
 func (s *apDHCPServer) assignIP(mac [6]byte) net.IP {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if ip, ok := s.leases[mac]; ok {
 		return cloneIP(ip)
 	}
-	// Scan pool for the first available address.
-	ip := cloneIP(s.start)
-	for !ipAfter(ip, s.end) {
+	start4 := s.start.To4()
+	end4 := s.end.To4()
+	if start4 == nil || end4 == nil {
+		return cloneIP(s.gw)
+	}
+	cur := binary.BigEndian.Uint32(start4)
+	endVal := binary.BigEndian.Uint32(end4)
+	for cur <= endVal {
 		var key [4]byte
-		copy(key[:], ip.To4())
+		binary.BigEndian.PutUint32(key[:], cur)
 		if !s.taken[key] {
-			leased := cloneIP(ip)
+			leased := make(net.IP, 4)
+			binary.BigEndian.PutUint32(leased, cur)
 			s.leases[mac] = leased
 			s.taken[key] = true
 			return leased
 		}
-		ip[3]++
+		cur++
 	}
 	log.Printf("wifi/dhcp: address pool exhausted (%d leases)", len(s.leases))
 	return cloneIP(s.gw) // fallback: should not happen with <101 clients

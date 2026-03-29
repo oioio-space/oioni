@@ -54,10 +54,11 @@ type APManager struct {
 	proc       processRunner
 	assignIPFn func(iface, cidr string) error // injectable; defaults to assignIP
 
-	mu      sync.Mutex  // guards process
-	dhcp    *apDHCPServer
-	process *os.Process // running hostapd; nil when stopped; guarded by mu
-	cancel  context.CancelFunc
+	mu           sync.Mutex  // guards process
+	dhcp         *apDHCPServer
+	process      *os.Process // running hostapd; nil when stopped; guarded by mu
+	cancel       context.CancelFunc
+	restartDelay time.Duration // delay between hostapd restarts; 0 → default (3s)
 }
 
 // newAPManager creates an APManager. Called by Manager.SetMode.
@@ -134,18 +135,29 @@ func (a *APManager) startHostapd(ctx context.Context) error {
 			if ctx.Err() != nil {
 				return // intentional shutdown
 			}
+			delay := a.restartDelay
+			if delay == 0 {
+				delay = 3 * time.Second
+			}
 			if err != nil || (state != nil && !state.Success()) {
-				log.Printf("wifi/ap: hostapd exited (%v), restarting in 3s", err)
+				log.Printf("wifi/ap: hostapd exited (%v), restarting in %s", err, delay)
 			}
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(3 * time.Second):
+			case <-time.After(delay):
 			}
 			proc, err = a.proc.StartProcess(a.hostapdBin, []string{confPath})
 			if err != nil {
 				log.Printf("wifi/ap: hostapd restart failed: %v", err)
 				continue
+			}
+			// Context may have been cancelled while we were in StartProcess;
+			// kill the new process immediately rather than leaving it running.
+			if ctx.Err() != nil {
+				_ = proc.Signal(os.Interrupt)
+				_, _ = proc.Wait()
+				return
 			}
 			a.mu.Lock()
 			a.process = proc

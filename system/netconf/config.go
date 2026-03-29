@@ -40,7 +40,13 @@ func (c *ifaceConfig) read() (map[string]IfaceCfg, error) {
 		return nil, err
 	}
 	var m map[string]IfaceCfg
-	return m, json.Unmarshal(data, &m)
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil, err
+	}
+	if m == nil {
+		m = make(map[string]IfaceCfg)
+	}
+	return m, nil
 }
 
 func (c *ifaceConfig) write(m map[string]IfaceCfg) error {

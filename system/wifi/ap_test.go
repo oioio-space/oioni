@@ -6,7 +6,10 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
+	"sync"
 	"testing"
+	"time"
 )
 
 // ── fakeAPProcess ─────────────────────────────────────────────────────────────
@@ -392,5 +395,185 @@ func TestIPAfter(t *testing.T) {
 	}
 	if ipAfter(b, a) {
 		t.Error("ipAfter(.100, .101) should be false")
+	}
+}
+
+// ── Bug fix tests ─────────────────────────────────────────────────────────────
+
+// TestAPDHCPServer_AssignIP_PoolEnd255_NoOverflow verifies that assignIP does
+// not enter an infinite loop when the pool ends at last-octet 255 and is
+// exhausted. Without the fix, ip[3]++ wraps 255→0, ipAfter returns false, and
+// the loop never terminates.
+func TestAPDHCPServer_AssignIP_PoolEnd255_NoOverflow(t *testing.T) {
+	// Pool: 192.168.4.250 – 192.168.4.255 (6 addresses).
+	s := &apDHCPServer{
+		gw:     net.IP{192, 168, 4, 1},
+		start:  net.IP{192, 168, 4, 250},
+		end:    net.IP{192, 168, 4, 255},
+		leases: make(map[[6]byte]net.IP),
+		taken:  make(map[[4]byte]bool),
+	}
+	// Fill all 6 slots.
+	for i := 0; i < 6; i++ {
+		s.assignIP([6]byte{0, 0, 0, 0, 0, byte(i)})
+	}
+	// 7th request: pool exhausted. Should return gw fallback, not loop forever.
+	done := make(chan net.IP, 1)
+	go func() {
+		done <- s.assignIP([6]byte{0, 0, 0, 0, 0, 10})
+	}()
+	select {
+	case ip := <-done:
+		if !ip.Equal(s.gw) {
+			t.Errorf("expected gw fallback %v, got %v", s.gw, ip)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("assignIP hung on exhausted pool with end[3]==255 (byte overflow bug)")
+	}
+}
+
+// stallRunner is a processRunner where the Nth StartProcess call (0-based)
+// blocks until unblocked via stallCh. It returns a long-running sleep process
+// from the stall call so that the goroutine blocks in Wait() if it doesn't
+// perform the ctx.Err() check after the restart.
+type stallRunner struct {
+	mu        sync.Mutex
+	callCount int
+	stallAt   int
+	stalledCh chan struct{} // closed when stalling begins
+	stallCh   chan struct{} // closed to unblock
+}
+
+func (r *stallRunner) Start(_ string, _ []string) error { return nil }
+
+func (r *stallRunner) StartProcess(_ string, _ []string) (*os.Process, error) {
+	r.mu.Lock()
+	n := r.callCount
+	r.callCount++
+	r.mu.Unlock()
+	if n == r.stallAt {
+		close(r.stalledCh)
+		<-r.stallCh
+		// Return a long-running process: goroutine blocks in Wait() without the fix.
+		return os.StartProcess("/bin/sleep", []string{"/bin/sleep", "3600"}, &os.ProcAttr{})
+	}
+	return fakeExitedProcess(), nil
+}
+
+// TestAPManager_SupervisorExitsAfterContextCancel verifies that the hostapd
+// supervisor goroutine exits cleanly when the context is cancelled while it is
+// blocked inside StartProcess (the restart race window). Without the fix, the
+// goroutine registers the new process and blocks on Wait() indefinitely.
+func TestAPManager_SupervisorExitsAfterContextCancel(t *testing.T) {
+	r := &stallRunner{
+		stallAt:   1, // stall on 2nd StartProcess (first is in Start())
+		stalledCh: make(chan struct{}),
+		stallCh:   make(chan struct{}),
+	}
+	dir := t.TempDir()
+	ap := newAPManager(APConfig{
+		SSID:    "test",
+		IP:      "192.168.4.1/24",
+		Channel: 6,
+	}, "wlan0", &confManager{dir: dir}, r, "/bin/true", "/usr/bin/iw")
+	ap.assignIPFn = func(_, _ string) error { return nil }
+	ap.restartDelay = time.Millisecond // fast restart for test
+
+	ctx, cancel := context.WithCancel(context.Background())
+	if err := ap.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait until goroutine is stalling inside second StartProcess.
+	select {
+	case <-r.stalledCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("supervisor goroutine never reached restart")
+	}
+
+	// Goroutine is counted here (stalling in StartProcess).
+	before := runtime.NumGoroutine()
+
+	cancel()         // context cancelled while goroutine is inside StartProcess
+	close(r.stallCh) // unblock StartProcess → goroutine receives sleep proc
+
+	// With fix: goroutine checks ctx.Err() → kills sleep proc → goroutine exits.
+	// Without fix: goroutine stores sleep proc, calls proc.Wait() → blocks.
+	// Poll for goroutine to exit (count to drop below baseline).
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if runtime.NumGoroutine() < before {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	after := runtime.NumGoroutine()
+	if after >= before {
+		t.Errorf("supervisor goroutine still running after context cancel+restart "+
+			"(before=%d after=%d) — missing ctx.Err() check after StartProcess",
+			before, after)
+	}
+	ap.Stop() // cleanup (kills sleep proc if fix is missing)
+}
+
+// TestAPDHCPServer_Stop_NoGoroutineLeak verifies that Stop() cleans up the
+// context-watcher goroutine even when the context is never cancelled. Without
+// the fix, the watcher goroutine blocks on <-ctx.Done() forever after Stop().
+func TestAPDHCPServer_Stop_NoGoroutineLeak(t *testing.T) {
+	// Open a random UDP port (no root needed — avoids requiring :67).
+	pc, err := net.ListenPacket("udp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn := pc.(*net.UDPConn)
+
+	srv := &apDHCPServer{
+		leases: make(map[[6]byte]net.IP),
+		taken:  make(map[[4]byte]bool),
+		conn:   conn,
+		stopCh: make(chan struct{}),
+	}
+
+	ctx := context.Background() // never cancelled
+	before := runtime.NumGoroutine()
+
+	// Start the two goroutines exactly as Start() does.
+	srv.wg.Add(1)
+	go func() {
+		defer srv.wg.Done()
+		defer conn.Close()
+		buf := make([]byte, 1500)
+		for {
+			_, _, err := conn.ReadFromUDP(buf)
+			if err != nil {
+				return
+			}
+		}
+	}()
+	// Watcher goroutine — buggy version (not in wg, no stopCh).
+	leaked := make(chan struct{})
+	go func() {
+		defer close(leaked)
+		select {
+		case <-ctx.Done():
+		case <-srv.stopCh:
+		}
+		conn.Close()
+	}()
+
+	// Stop closes the connection and should drain both goroutines.
+	srv.Stop()
+
+	// Wait for watcher goroutine to finish (it exits via stopCh).
+	select {
+	case <-leaked:
+	case <-time.After(time.Second):
+		t.Fatal("watcher goroutine did not exit after Stop() — goroutine leak")
+	}
+
+	time.Sleep(20 * time.Millisecond) // let scheduler reap
+	after := runtime.NumGoroutine()
+	if after > before {
+		t.Errorf("goroutine leak: before=%d after=%d", before, after)
 	}
 }

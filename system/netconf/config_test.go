@@ -1,6 +1,8 @@
 package netconf
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -24,4 +26,24 @@ func TestConfigRoundtrip(t *testing.T) {
 	if out["wlan0"].Mode != ModeDHCP {
 		t.Errorf("unexpected mode: %s", out["wlan0"].Mode)
 	}
+}
+
+// TestConfigRead_NullJSON verifies that a file containing JSON null does not
+// return a nil map. Callers call saved[iface] = cfg on the result, so a nil
+// map causes a panic.
+func TestConfigRead_NullJSON(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &ifaceConfig{dir: dir}
+	if err := os.WriteFile(filepath.Join(dir, "interfaces.json"), []byte("null"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := cfg.read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m == nil {
+		t.Fatal("read() returned nil map for JSON null — map write would panic")
+	}
+	// Must be writable.
+	m["eth0"] = IfaceCfg{Mode: ModeStatic}
 }

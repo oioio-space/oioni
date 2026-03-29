@@ -3,12 +3,13 @@ package usbgadget
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
 )
 
-const configfsRoot = "/sys/kernel/config/usb_gadget"
+var configfsRoot = "/sys/kernel/config/usb_gadget"
 
 func (g *Gadget) gadgetDir() string {
 	return filepath.Join(configfsRoot, g.name)
@@ -93,23 +94,39 @@ func (g *Gadget) teardownConfigfs() error {
 	entries, _ := os.ReadDir(cfgDir)
 	for _, e := range entries {
 		if e.Type()&os.ModeSymlink != 0 {
-			os.Remove(filepath.Join(cfgDir, e.Name()))
+			if err := os.Remove(filepath.Join(cfgDir, e.Name())); err != nil {
+				log.Printf("usbgadget: teardown remove symlink %s: %v", e.Name(), err)
+			}
 		}
 	}
 
-	os.Remove(filepath.Join(dir, "configs", "c.1", "strings", g.langID))
-	os.Remove(filepath.Join(dir, "configs", "c.1"))
-	os.Remove(filepath.Join(dir, "configs"))
+	for _, p := range []string{
+		filepath.Join(dir, "configs", "c.1", "strings", g.langID),
+		filepath.Join(dir, "configs", "c.1"),
+		filepath.Join(dir, "configs"),
+	} {
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			log.Printf("usbgadget: teardown remove %s: %v", p, err)
+		}
+	}
 
 	funcsDir := filepath.Join(dir, "functions")
 	entries, _ = os.ReadDir(funcsDir)
 	for _, e := range entries {
-		os.Remove(filepath.Join(funcsDir, e.Name()))
+		if err := os.Remove(filepath.Join(funcsDir, e.Name())); err != nil {
+			log.Printf("usbgadget: teardown remove func %s: %v", e.Name(), err)
+		}
 	}
-	os.Remove(funcsDir)
+	for _, p := range []string{
+		funcsDir,
+		filepath.Join(dir, "strings", g.langID),
+		filepath.Join(dir, "strings"),
+	} {
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			log.Printf("usbgadget: teardown remove %s: %v", p, err)
+		}
+	}
 
-	os.Remove(filepath.Join(dir, "strings", g.langID))
-	os.Remove(filepath.Join(dir, "strings"))
 	return os.Remove(dir)
 }
 
