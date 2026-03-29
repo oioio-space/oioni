@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/oioio-space/oioni/drivers/touch"
 )
 
 func TestIconCarousel_PreferredSize(t *testing.T) {
@@ -94,7 +93,7 @@ func TestIconCarousel_TapCallsOnTap(t *testing.T) {
 	c.tapDelay = 10 * time.Millisecond
 
 	// Touch inside first button region (leading=13, button=80px wide)
-	c.HandleTouch(touch.TouchPoint{X: uint16(13 + 20), Y: 44})
+	c.HandleTouch(TouchPoint{X: uint16(13 + 20), Y: 44})
 
 	select {
 	case <-called:

@@ -4,22 +4,52 @@ package gui
 import (
 	"image"
 	"sync/atomic"
+	"time"
 
 	"github.com/oioio-space/oioni/ui/canvas"
-	"github.com/oioio-space/oioni/drivers/epd"
-	"github.com/oioio-space/oioni/drivers/touch"
 )
 
-// Display is the subset of *epd.Display used by Navigator.
-// *epd.Display satisfies this interface.
+// DisplayMode selects the EPD refresh strategy.
+// Values are intentionally identical to drivers/epd.Mode so the concrete
+// *epd.Display can be wrapped with a one-line cast (see EPDAdapter in cmd/oioni).
+type DisplayMode uint8
+
+const (
+	ModeFull    DisplayMode = iota // ~2s, best quality
+	ModePartial                    // ~0.3s, partial update
+	ModeFast                       // ~0.5s, fast full update
+)
+
+// ScreenWidth and ScreenHeight are the physical pixel dimensions of the
+// Waveshare 2.13" EPD v4. After Rot90, the logical screen is ScreenHeight×ScreenWidth (250×122).
+const (
+	ScreenWidth  = 122
+	ScreenHeight = 250
+)
+
+// TouchPoint is a single contact point from the touch controller.
+type TouchPoint struct {
+	ID   uint8
+	X, Y uint16
+	Size uint8
+}
+
+// TouchEvent carries all active touch points at a moment in time.
+type TouchEvent struct {
+	Points []TouchPoint
+	Time   time.Time
+}
+
+// Display is the hardware interface used by Navigator.
+// Use EPDAdapter (cmd/oioni/epaper.go) to wrap *epd.Display.
 // Note: DisplayFull is intentionally excluded — it only writes the 0x24 RAM bank,
 // not the 0x26 reference frame, so subsequent DisplayPartial calls would ghost.
 type Display interface {
-	Init(m epd.Mode) error
+	Init(m DisplayMode) error
 	DisplayBase(buf []byte) error    // full refresh: writes 0x24 + 0x26 RAM banks
 	DisplayPartial(buf []byte) error // partial refresh: full 4000-byte buffer, self-contained
-	DisplayFast(buf []byte) error       // fast full refresh
-	DisplayRegenerate() error           // black→white purge cycle (~4s), for keep-alive wake
+	DisplayFast(buf []byte) error    // fast full refresh
+	DisplayRegenerate() error        // black→white purge cycle (~4s), for keep-alive wake
 	Sleep() error
 	Close() error
 }
@@ -39,7 +69,7 @@ type Widget interface {
 // Touchable is implemented by interactive widgets.
 // Navigator calls HandleTouch after hit-testing and debounce.
 type Touchable interface {
-	HandleTouch(pt touch.TouchPoint) bool // true = event consumed
+	HandleTouch(pt TouchPoint) bool // true = event consumed
 }
 
 // Stoppable is implemented by widgets that own background goroutines.

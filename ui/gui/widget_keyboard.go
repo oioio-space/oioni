@@ -4,7 +4,6 @@ import (
 	"image"
 	"unicode/utf8"
 
-	"github.com/oioio-space/oioni/drivers/touch"
 	"github.com/oioio-space/oioni/ui/canvas"
 )
 
@@ -119,7 +118,7 @@ func (kb *keyboardWidget) Draw(c *canvas.Canvas) {
 	kb.MarkClean()
 }
 
-func (kb *keyboardWidget) HandleTouch(pt touch.TouchPoint) bool {
+func (kb *keyboardWidget) HandleTouch(pt TouchPoint) bool {
 	r := kb.Bounds()
 	if r.Empty() {
 		return false

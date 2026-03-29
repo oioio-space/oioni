@@ -5,8 +5,6 @@ import (
 	"image"
 	"testing"
 
-	"github.com/oioio-space/oioni/drivers/epd"
-	"github.com/oioio-space/oioni/drivers/touch"
 	"github.com/oioio-space/oioni/ui/canvas"
 )
 
@@ -139,7 +137,7 @@ func TestScrollableList_ScrollDownAtBottom_Noop(t *testing.T) {
 func TestScrollableList_TapRow0(t *testing.T) {
 	l, stubs := newTestList5()
 	setBoundsMenu(l) // row 0: y=22..46
-	l.HandleTouch(touch.TouchPoint{X: 100, Y: 34}) // y=34 → row 0
+	l.HandleTouch(TouchPoint{X: 100, Y: 34}) // y=34 → row 0
 	if !stubs[0].tapped {
 		t.Error("row 0 not tapped")
 	}
@@ -148,7 +146,7 @@ func TestScrollableList_TapRow0(t *testing.T) {
 func TestScrollableList_TapRow3(t *testing.T) {
 	l, stubs := newTestList5()
 	setBoundsMenu(l) // row 3: y=97..121
-	l.HandleTouch(touch.TouchPoint{X: 100, Y: 109}) // y=109 → row 3
+	l.HandleTouch(TouchPoint{X: 100, Y: 109}) // y=109 → row 3
 	if !stubs[3].tapped {
 		t.Error("row 3 not tapped")
 	}
@@ -158,7 +156,7 @@ func TestScrollableList_TapWithOffset(t *testing.T) {
 	l, stubs := newTestList5()
 	setBoundsMenu(l)
 	l.offset = 1 // showing items 1..4
-	l.HandleTouch(touch.TouchPoint{X: 100, Y: 34}) // row 0 → item index 1
+	l.HandleTouch(TouchPoint{X: 100, Y: 34}) // row 0 → item index 1
 	if !stubs[1].tapped {
 		t.Error("item 1 not tapped with offset=1")
 	}
@@ -167,21 +165,21 @@ func TestScrollableList_TapWithOffset(t *testing.T) {
 func TestScrollableList_DrawDoesNotPanic(t *testing.T) {
 	l, _ := newTestList5()
 	setBoundsMenu(l)
-	c := canvas.New(epd.Width, epd.Height, canvas.Rot90)
+	c := canvas.New(ScreenWidth, ScreenHeight, canvas.Rot90)
 	l.Draw(c)
 }
 
 func TestScrollableList_DrawEmptyList(t *testing.T) {
 	l := NewScrollableList(nil, 25)
 	setBoundsMenu(l)
-	c := canvas.New(epd.Width, epd.Height, canvas.Rot90)
+	c := canvas.New(ScreenWidth, ScreenHeight, canvas.Rot90)
 	l.Draw(c) // must not panic
 }
 
 func TestScrollableList_DrawEmptyBounds(t *testing.T) {
 	l, _ := newTestList5()
 	// bounds zero → early return, no panic
-	c := canvas.New(epd.Width, epd.Height, canvas.Rot90)
+	c := canvas.New(ScreenWidth, ScreenHeight, canvas.Rot90)
 	l.Draw(c)
 }
 
@@ -190,7 +188,7 @@ func TestScrollableList_TapAboveWidget_DoesNotFireItem0(t *testing.T) {
 	setBoundsMenu(l) // wb.Min.Y = 22
 	// pt.Y = 21 → just above the widget. In Go: (21-22)/25 = -1/25 = 0,
 	// which would pass row >= 0 without the explicit bounds check.
-	l.HandleTouch(touch.TouchPoint{X: 100, Y: 21})
+	l.HandleTouch(TouchPoint{X: 100, Y: 21})
 	if stubs[0].tapped {
 		t.Error("item 0 was tapped for a touch above the widget bounds")
 	}

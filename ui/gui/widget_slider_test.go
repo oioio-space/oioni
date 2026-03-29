@@ -4,7 +4,6 @@ import (
 	"image"
 	"testing"
 
-	"github.com/oioio-space/oioni/drivers/touch"
 )
 
 func TestSlider_SetValueClamps(t *testing.T) {
@@ -32,7 +31,7 @@ func TestSlider_TapSetsValue(t *testing.T) {
 	s := NewSlider(0, 100, 1)
 	s.SetBounds(image.Rect(0, 0, 100, 24))
 	// Tap at x=50 out of width 100 → value = 50
-	s.HandleTouch(touch.TouchPoint{X: 50, Y: 12})
+	s.HandleTouch(TouchPoint{X: 50, Y: 12})
 	if s.Value() != 50 {
 		t.Errorf("expected 50, got %f", s.Value())
 	}
@@ -43,7 +42,7 @@ func TestSlider_OnChangeCalled(t *testing.T) {
 	s := NewSlider(0, 100, 1)
 	s.SetBounds(image.Rect(0, 0, 100, 24))
 	s.OnChange = func(v float64) { got = v }
-	s.HandleTouch(touch.TouchPoint{X: 75, Y: 12})
+	s.HandleTouch(TouchPoint{X: 75, Y: 12})
 	if got != 75 {
 		t.Errorf("OnChange got %f, want 75", got)
 	}

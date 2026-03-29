@@ -3,7 +3,6 @@ package gui
 import (
 	"image"
 
-	"github.com/oioio-space/oioni/drivers/epd"
 	"github.com/oioio-space/oioni/ui/canvas"
 )
 
@@ -50,7 +49,7 @@ func ShowAlert(nav *Navigator, title, message string, buttons ...AlertButton) {
 	)
 
 	ov := NewOverlay(content, AlignCenter)
-	ov.setScreen(epd.Height, epd.Width) // logical screen after Rot90: 250×122
+	ov.setScreen(ScreenHeight, ScreenWidth) // logical screen after Rot90: 250×122
 
 	_ = nav.Push(&Scene{Widgets: []Widget{ov}})
 }
@@ -66,7 +65,7 @@ func ShowMenu(nav *Navigator, title string, items []MenuItem) {
 		top = NewVBox(Expand(menu))
 	}
 	// SetBounds required: Navigator does not set bounds automatically.
-	top.SetBounds(image.Rect(0, 0, epd.Height, epd.Width))
+	top.SetBounds(image.Rect(0, 0, ScreenHeight, ScreenWidth))
 
 	scene := &Scene{
 		// top renders everything; menu listed at top level so Navigator can route
@@ -119,7 +118,7 @@ func ShowTextInput(nav *Navigator, placeholder string, maxLen int, onConfirm fun
 		Expand(kb),
 	)
 	// SetBounds required: Navigator does not set bounds automatically.
-	vbox.SetBounds(image.Rect(0, 0, epd.Height, epd.Width))
+	vbox.SetBounds(image.Rect(0, 0, ScreenHeight, ScreenWidth))
 
 	scene := &Scene{Widgets: []Widget{vbox}}
 	_ = nav.Push(scene)

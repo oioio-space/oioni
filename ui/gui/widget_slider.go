@@ -5,7 +5,6 @@ import (
 	"image"
 	"math"
 
-	"github.com/oioio-space/oioni/drivers/touch"
 	"github.com/oioio-space/oioni/ui/canvas"
 )
 
@@ -84,7 +83,7 @@ func (s *Slider) Draw(c *canvas.Canvas) {
 	}
 }
 
-func (s *Slider) HandleTouch(pt touch.TouchPoint) bool {
+func (s *Slider) HandleTouch(pt TouchPoint) bool {
 	r := s.Bounds()
 	if r.Empty() || r.Dx() == 0 {
 		return false

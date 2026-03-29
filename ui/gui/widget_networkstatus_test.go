@@ -5,7 +5,6 @@ import (
 	"image"
 	"testing"
 
-	"github.com/oioio-space/oioni/drivers/touch"
 )
 
 func TestNetworkStatusBar_SetInterfacesMarksDirty(t *testing.T) {
@@ -84,5 +83,5 @@ func TestNetworkStatusBar_BadgeTouchDispatchesWhenNavNil(t *testing.T) {
 		t.Fatal("badgeBounds should be non-empty after Draw with 2 up interfaces")
 	}
 	// Tap somewhere in the header — nav=nil so dispatch is skipped, must not panic
-	nsb.HandleTouch(touch.TouchPoint{X: 80, Y: 5})
+	nsb.HandleTouch(TouchPoint{X: 80, Y: 5})
 }

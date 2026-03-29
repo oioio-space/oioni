@@ -4,7 +4,6 @@ import (
 	"image"
 	"testing"
 
-	"github.com/oioio-space/oioni/drivers/touch"
 )
 
 func TestMenu_TapSelectsItem(t *testing.T) {
@@ -17,7 +16,7 @@ func TestMenu_TapSelectsItem(t *testing.T) {
 	// Each item is 20px tall
 	m.SetBounds(image.Rect(0, 0, 100, 40))
 	// Tap on second item (y=25 → row index 1)
-	m.HandleTouch(touch.TouchPoint{X: 50, Y: 25})
+	m.HandleTouch(TouchPoint{X: 50, Y: 25})
 	if selected != "beta" {
 		t.Errorf("expected 'beta', got %q", selected)
 	}

@@ -6,7 +6,6 @@ import (
 	"slices"
 
 	"github.com/oioio-space/oioni/ui/canvas"
-	"github.com/oioio-space/oioni/drivers/epd"
 )
 
 // maxFastBeforeBase is the maximum consecutive DisplayFast() calls before forcing a
@@ -48,7 +47,7 @@ func (rm *refreshManager) RenderWith(c *canvas.Canvas, widgets []Widget, forced 
 }
 
 func (rm *refreshManager) fullRefresh(c *canvas.Canvas, widgets []Widget) error {
-	if err := rm.display.Init(epd.ModeFull); err != nil {
+	if err := rm.display.Init(ModeFull); err != nil {
 		return err
 	}
 	drawAll(c, widgets)

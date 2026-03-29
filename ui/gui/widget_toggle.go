@@ -3,7 +3,6 @@ package gui
 import (
 	"image"
 
-	"github.com/oioio-space/oioni/drivers/touch"
 	"github.com/oioio-space/oioni/ui/canvas"
 )
 
@@ -39,7 +38,7 @@ func (t *Toggle) Draw(c *canvas.Canvas) {
 	c.DrawRect(knob, canvas.Black, true)
 }
 
-func (t *Toggle) HandleTouch(_ touch.TouchPoint) bool {
+func (t *Toggle) HandleTouch(_ TouchPoint) bool {
 	t.On = !t.On
 	t.SetDirty()
 	if t.OnChange != nil {

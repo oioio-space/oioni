@@ -4,7 +4,6 @@ import (
 	"image"
 	"image/color"
 
-	"github.com/oioio-space/oioni/drivers/touch"
 	"github.com/oioio-space/oioni/ui/canvas"
 )
 
@@ -111,7 +110,7 @@ func (m *Menu) drawItemContent(c *canvas.Canvas, item MenuItem, row image.Rectan
 	}
 }
 
-func (m *Menu) HandleTouch(pt touch.TouchPoint) bool {
+func (m *Menu) HandleTouch(pt TouchPoint) bool {
 	r := m.Bounds()
 	if r.Empty() {
 		return false

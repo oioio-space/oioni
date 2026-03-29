@@ -4,7 +4,6 @@ package gui
 import (
 	"image"
 
-	"github.com/oioio-space/oioni/drivers/touch"
 	"github.com/oioio-space/oioni/ui/canvas"
 )
 
@@ -72,7 +71,7 @@ func (s *ActionSidebar) cellHeights(totalH int) []int {
 }
 
 // HandleTouch routes a tap to the button at the touch's Y position.
-func (s *ActionSidebar) HandleTouch(pt touch.TouchPoint) bool {
+func (s *ActionSidebar) HandleTouch(pt TouchPoint) bool {
 	b := s.Bounds()
 	if b.Empty() || len(s.buttons) == 0 {
 		return false

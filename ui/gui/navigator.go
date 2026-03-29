@@ -8,8 +8,6 @@ import (
 	"time"
 
 	"github.com/oioio-space/oioni/ui/canvas"
-	"github.com/oioio-space/oioni/drivers/epd"
-	"github.com/oioio-space/oioni/drivers/touch"
 )
 
 const debounce = 200 * time.Millisecond
@@ -53,7 +51,7 @@ type Navigator struct {
 
 // NewNavigator creates a Navigator. The Display must outlive the Navigator.
 func NewNavigator(d Display) *Navigator {
-	c := canvas.New(epd.Width, epd.Height, canvas.Rot90)
+	c := canvas.New(ScreenWidth, ScreenHeight, canvas.Rot90)
 	return &Navigator{
 		display:  d,
 		rm:       newRefreshManager(d),
@@ -261,9 +259,9 @@ func collectAllWidgets(widgets []Widget) []Widget {
 // The X axis is inverted because the canvas Rot90 renders logX=0 at the physical
 // right column while the display hardware shows it on the visual left. The GT1151
 // reports visual-left as small pt.Y, so we invert to align with logical coords.
-func (nav *Navigator) handleTouch(pt touch.TouchPoint) {
-	logX := clamp(epd.Height-1-int(pt.Y), 0, epd.Height-1)
-	logY := clamp(int(pt.X), 0, epd.Width-1)
+func (nav *Navigator) handleTouch(pt TouchPoint) {
+	logX := clamp(ScreenHeight-1-int(pt.Y), 0, ScreenHeight-1)
+	logY := clamp(int(pt.X), 0, ScreenWidth-1)
 	logPt := image.Pt(logX, logY)
 
 	if len(nav.stack) == 0 {
@@ -284,14 +282,14 @@ func (nav *Navigator) handleTouch(pt touch.TouchPoint) {
 	nav.lastFire[w] = now
 	nav.mu.Unlock()
 
-	logTp := touch.TouchPoint{ID: pt.ID, X: uint16(logPt.X), Y: uint16(logPt.Y), Size: pt.Size}
+	logTp := TouchPoint{ID: pt.ID, X: uint16(logPt.X), Y: uint16(logPt.Y), Size: pt.Size}
 	t.HandleTouch(logTp)
 }
 
 // Run starts the touch event loop and blocks until ctx is cancelled.
 // After Run returns, call display.Sleep() then display.Close().
-func (nav *Navigator) Run(ctx context.Context, events <-chan touch.TouchEvent) {
-	var swipePt *touch.TouchPoint
+func (nav *Navigator) Run(ctx context.Context, events <-chan TouchEvent) {
+	var swipePt *TouchPoint
 	var swipeTimer *time.Timer
 	var swipeConsumed bool // true after a swipe fires; prevents re-fire from same gesture burst
 	timerCh := func() <-chan time.Time {
@@ -343,7 +341,7 @@ func (nav *Navigator) Run(ctx context.Context, events <-chan touch.TouchEvent) {
 	// nil events channel would block forever in select; replace with never-firing channel
 	touchEvents := events
 	if touchEvents == nil {
-		touchEvents = make(chan touch.TouchEvent)
+		touchEvents = make(chan TouchEvent)
 	}
 
 	for {
@@ -371,7 +369,7 @@ func (nav *Navigator) Run(ctx context.Context, events <-chan touch.TouchEvent) {
 		case <-nav.wakeCh:
 			if sleeping {
 				sleeping = false
-				_ = nav.display.Init(epd.ModeFull)
+				_ = nav.display.Init(ModeFull)
 				if len(nav.stack) > 0 {
 					_ = nav.rm.RenderWith(nav.canvas, nav.stack[len(nav.stack)-1].Widgets, true)
 				}
@@ -384,7 +382,7 @@ func (nav *Navigator) Run(ctx context.Context, events <-chan touch.TouchEvent) {
 		case fn := <-nav.dispatchFn:
 			if sleeping {
 				sleeping = false
-				_ = nav.display.Init(epd.ModeFull)
+				_ = nav.display.Init(ModeFull)
 			}
 			fn()
 			nav.Render() //nolint:errcheck
@@ -406,7 +404,7 @@ func (nav *Navigator) Run(ctx context.Context, events <-chan touch.TouchEvent) {
 			// Wake display if sleeping before routing any touch
 			if sleeping {
 				sleeping = false
-				_ = nav.display.Init(epd.ModeFull)
+				_ = nav.display.Init(ModeFull)
 				if len(nav.stack) > 0 {
 					_ = nav.rm.RenderWith(nav.canvas, nav.stack[len(nav.stack)-1].Widgets, true)
 				}

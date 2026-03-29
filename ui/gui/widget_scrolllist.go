@@ -4,7 +4,6 @@ package gui
 import (
 	"image"
 
-	"github.com/oioio-space/oioni/drivers/touch"
 	"github.com/oioio-space/oioni/ui/canvas"
 )
 
@@ -79,7 +78,7 @@ func (l *ScrollableList) SetItems(items []ListItem) {
 }
 
 // HandleTouch routes the touch to the correct item by row index.
-func (l *ScrollableList) HandleTouch(pt touch.TouchPoint) bool {
+func (l *ScrollableList) HandleTouch(pt TouchPoint) bool {
 	wb := l.Bounds()
 	if l.RowH <= 0 {
 		return false // Bug 3 fix: return false, not true

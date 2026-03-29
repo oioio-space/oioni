@@ -4,7 +4,6 @@ import (
 	"image"
 	"testing"
 
-	"github.com/oioio-space/oioni/drivers/touch"
 )
 
 func TestActionSidebar_PreferredSize(t *testing.T) {
@@ -37,14 +36,14 @@ func TestActionSidebar_HandleTouch_TapsCorrectButton(t *testing.T) {
 
 	// With 2 buttons, each is 61px tall. First button: y in [0, 61), second: [61, 122).
 	// Touch at y=30 → first button
-	s.HandleTouch(touch.TouchPoint{X: 22, Y: 30})
+	s.HandleTouch(TouchPoint{X: 22, Y: 30})
 	if tapped != 0 {
 		t.Errorf("expected button 0 tapped, got %d", tapped)
 	}
 
 	// Touch at y=90 → second button
 	tapped = -1
-	s.HandleTouch(touch.TouchPoint{X: 22, Y: 90})
+	s.HandleTouch(TouchPoint{X: 22, Y: 90})
 	if tapped != 1 {
 		t.Errorf("expected button 1 tapped, got %d", tapped)
 	}

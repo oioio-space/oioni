@@ -4,7 +4,6 @@ package gui
 import (
 	"image"
 
-	"github.com/oioio-space/oioni/drivers/touch"
 	"github.com/oioio-space/oioni/ui/canvas"
 )
 
@@ -49,7 +48,7 @@ func NewIconNavButton(icon Icon, onTap func(), isActive func() bool) *NavButton 
 }
 
 // HandleTouch fires onTap. Touch routing is handled by the Navigator.
-func (b *NavButton) HandleTouch(_ touch.TouchPoint) bool {
+func (b *NavButton) HandleTouch(_ TouchPoint) bool {
 	if b.onTap != nil {
 		b.onTap()
 	}

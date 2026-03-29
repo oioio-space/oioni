@@ -4,7 +4,6 @@ import (
 	"image"
 
 	"github.com/oioio-space/oioni/ui/canvas"
-	"github.com/oioio-space/oioni/drivers/touch"
 )
 
 // Checkbox is a labeled toggle with a visible check box.
@@ -58,7 +57,7 @@ func (cb *Checkbox) Draw(c *canvas.Canvas) {
 	cb.MarkClean()
 }
 
-func (cb *Checkbox) HandleTouch(_ touch.TouchPoint) bool {
+func (cb *Checkbox) HandleTouch(_ TouchPoint) bool {
 	cb.Checked = !cb.Checked
 	cb.SetDirty()
 	if cb.OnChange != nil {

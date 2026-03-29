@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/oioio-space/oioni/ui/canvas"
-	"github.com/oioio-space/oioni/drivers/touch"
 )
 
 // textWidth returns the pixel width of text rendered in font f.
@@ -116,7 +115,7 @@ func (b *Button) PreferredSize() image.Point {
 func (b *Button) MinSize() image.Point { return image.Pt(20, 20) }
 
 // HandleTouch fires onClick and sets pressed state for visual feedback.
-func (b *Button) HandleTouch(pt touch.TouchPoint) bool {
+func (b *Button) HandleTouch(pt TouchPoint) bool {
 	b.pressed = true
 	b.SetDirty()
 	if b.onClick != nil {

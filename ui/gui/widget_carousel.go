@@ -6,7 +6,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/oioio-space/oioni/drivers/touch"
 	"github.com/oioio-space/oioni/ui/canvas"
 )
 
@@ -78,7 +77,7 @@ func (c *IconCarousel) ScrollH(delta int) {
 }
 
 // HandleTouch implements Touchable. Non-blocking: tap feedback via time.AfterFunc.
-func (c *IconCarousel) HandleTouch(pt touch.TouchPoint) bool {
+func (c *IconCarousel) HandleTouch(pt TouchPoint) bool {
 	b := c.Bounds()
 	if b.Empty() || len(c.items) == 0 {
 		return false

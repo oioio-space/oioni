@@ -5,7 +5,6 @@ import (
 	"image"
 	"image/color"
 
-	"github.com/oioio-space/oioni/drivers/touch"
 	"github.com/oioio-space/oioni/ui/canvas"
 	"github.com/oioio-space/oioni/ui/gui"
 )
@@ -32,7 +31,7 @@ func (m *modeSelector) Mode() ipMode { return m.mode }
 
 func (m *modeSelector) SetOnChange(fn func(ipMode)) { m.onChange = fn }
 
-func (m *modeSelector) HandleTouch(pt touch.TouchPoint) bool {
+func (m *modeSelector) HandleTouch(pt gui.TouchPoint) bool {
 	b := m.Bounds()
 	mid := b.Min.X + b.Dx()/2
 	if int(pt.X) < mid {

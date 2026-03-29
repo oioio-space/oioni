@@ -29,6 +29,41 @@ const (
 	idleTimeout = 60 * time.Second
 )
 
+// epdAdapter wraps *epd.Display so it satisfies gui.Display.
+// gui.DisplayMode values are identical to epd.Mode, so the cast is lossless.
+type epdAdapter struct{ *epd.Display }
+
+func (a epdAdapter) Init(m gui.DisplayMode) error { return a.Display.Init(epd.Mode(m)) }
+
+// adaptTouchEvents converts a drivers/touch event channel into a gui.TouchEvent
+// channel. Runs in a goroutine until src is closed or ctx is cancelled.
+func adaptTouchEvents(ctx context.Context, src <-chan touch.TouchEvent) <-chan gui.TouchEvent {
+	dst := make(chan gui.TouchEvent)
+	go func() {
+		defer close(dst)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case e, ok := <-src:
+				if !ok {
+					return
+				}
+				pts := make([]gui.TouchPoint, len(e.Points))
+				for i, p := range e.Points {
+					pts[i] = gui.TouchPoint{ID: p.ID, X: p.X, Y: p.Y, Size: p.Size}
+				}
+				select {
+				case dst <- gui.TouchEvent{Points: pts, Time: e.Time}:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}
+	}()
+	return dst
+}
+
 type epaperState struct {
 	nav    *gui.Navigator
 	nsb    *gui.NetworkStatusBar
@@ -70,7 +105,7 @@ func startEPaper(ctx context.Context, wifiMgr *wifi.Manager, netconfMgr *netconf
 		return nil
 	}
 
-	nav := gui.NewNavigatorWithIdle(d, idleTimeout)
+	nav := gui.NewNavigatorWithIdle(epdAdapter{d}, idleTimeout)
 
 	home, nsb := oioniui.NewHomeScene(nav, wifiMgr, netconfMgr)
 	if err := nav.Push(home); err != nil {
@@ -89,7 +124,7 @@ func startEPaper(ctx context.Context, wifiMgr *wifi.Manager, netconfMgr *netconf
 			_ = d.Sleep()
 			_ = d.Close()
 		}()
-		nav.Run(guiCtx, tc)
+		nav.Run(guiCtx, adaptTouchEvents(guiCtx, tc))
 	}()
 
 	return &epaperState{nav: nav, nsb: nsb, cancel: cancel}

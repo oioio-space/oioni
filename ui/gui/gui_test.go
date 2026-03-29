@@ -7,8 +7,6 @@ import (
 	"time"
 
 	"github.com/oioio-space/oioni/ui/canvas"
-	"github.com/oioio-space/oioni/drivers/epd"
-	"github.com/oioio-space/oioni/drivers/touch"
 )
 
 // mockHScrollable is a package-level test helper used by TestHScrollableInterface_CompileGuard.
@@ -75,7 +73,7 @@ func TestBaseWidgetPreferredAndMinSizeZero(t *testing.T) {
 }
 
 func newTestCanvas() *canvas.Canvas {
-	return canvas.New(epd.Width, epd.Height, canvas.Rot90)
+	return canvas.New(ScreenWidth, ScreenHeight, canvas.Rot90)
 }
 
 // ── layout tests ──────────────────────────────────────────────────────────────
@@ -110,7 +108,7 @@ func newTouchWidget(pw, ph int) *touchWidget {
 	tw.SetDirty()
 	return tw
 }
-func (tw *touchWidget) HandleTouch(pt touch.TouchPoint) bool { tw.touched = true; return true }
+func (tw *touchWidget) HandleTouch(pt TouchPoint) bool { tw.touched = true; return true }
 
 func TestVBoxAllocatesChildren(t *testing.T) {
 	a := newFixedWidget(100, 20, 0, 10)
@@ -290,7 +288,7 @@ func TestLabelPreferredSizeUsesFont(t *testing.T) {
 }
 
 func TestLabelDrawDoesNotPanic(t *testing.T) {
-	c := canvas.New(epd.Width, epd.Height, canvas.Rot90)
+	c := canvas.New(ScreenWidth, ScreenHeight, canvas.Rot90)
 	l := NewLabel("hello")
 	l.SetBounds(image.Rect(0, 0, 100, 20))
 	l.Draw(c) // must not panic, even with nil font
@@ -301,14 +299,14 @@ func TestButtonHandleTouchFiresOnClick(t *testing.T) {
 	btn := NewButton("OK")
 	btn.OnClick(func() { clicked = true })
 	btn.SetBounds(image.Rect(0, 0, 60, 20))
-	btn.HandleTouch(touch.TouchPoint{X: 30, Y: 10})
+	btn.HandleTouch(TouchPoint{X: 30, Y: 10})
 	if !clicked {
 		t.Error("OnClick should fire on HandleTouch")
 	}
 }
 
 func TestButtonDrawDoesNotPanic(t *testing.T) {
-	c := canvas.New(epd.Width, epd.Height, canvas.Rot90)
+	c := canvas.New(ScreenWidth, ScreenHeight, canvas.Rot90)
 	btn := NewButton("OK")
 	btn.SetBounds(image.Rect(0, 0, 60, 20))
 	btn.Draw(c)
@@ -338,7 +336,7 @@ func TestProgressBarPreferredSize(t *testing.T) {
 }
 
 func TestStatusBarDrawDoesNotPanic(t *testing.T) {
-	c := canvas.New(epd.Width, epd.Height, canvas.Rot90)
+	c := canvas.New(ScreenWidth, ScreenHeight, canvas.Rot90)
 	s := NewStatusBar("left", "right")
 	s.SetBounds(image.Rect(0, 0, 250, 16))
 	s.Draw(c)
@@ -359,13 +357,13 @@ func TestDividerPreferredHeight(t *testing.T) {
 }
 
 func TestButtonPressedStateCycle(t *testing.T) {
-	c := canvas.New(epd.Width, epd.Height, canvas.Rot90)
+	c := canvas.New(ScreenWidth, ScreenHeight, canvas.Rot90)
 	btn := NewButton("OK")
 	btn.SetBounds(image.Rect(0, 0, 60, 20))
 	btn.MarkClean()
 
 	// Touch → pressed=true, dirty=true
-	btn.HandleTouch(touch.TouchPoint{X: 30, Y: 10})
+	btn.HandleTouch(TouchPoint{X: 30, Y: 10})
 	if !btn.IsDirty() {
 		t.Error("after HandleTouch, button should be dirty (pressed state)")
 	}
@@ -395,10 +393,10 @@ type fakeDisplay struct {
 	fastCalled       int
 	regenerateCalled int
 	sleepCalled      int
-	lastMode         epd.Mode
+	lastMode         DisplayMode
 }
 
-func (f *fakeDisplay) Init(m epd.Mode) error          { f.initCalled++; f.lastMode = m; return nil }
+func (f *fakeDisplay) Init(m DisplayMode) error          { f.initCalled++; f.lastMode = m; return nil }
 func (f *fakeDisplay) DisplayBase(b []byte) error     { f.baseCalled++; return nil }
 func (f *fakeDisplay) DisplayPartial(b []byte) error  { f.partialCalled++; return nil }
 func (f *fakeDisplay) DisplayFast(b []byte) error     { f.fastCalled++; return nil }
@@ -409,7 +407,7 @@ func (f *fakeDisplay) Close() error                   { return nil }
 func TestRefreshManagerNoop(t *testing.T) {
 	d := &fakeDisplay{}
 	rm := newRefreshManager(d)
-	c := canvas.New(epd.Width, epd.Height, canvas.Rot90)
+	c := canvas.New(ScreenWidth, ScreenHeight, canvas.Rot90)
 	// No dirty widgets — render should be a noop
 	if err := rm.Render(c, nil); err != nil {
 		t.Fatalf("Render noop: %v", err)
@@ -422,7 +420,7 @@ func TestRefreshManagerNoop(t *testing.T) {
 func TestRefreshManagerPartialOnDirtyWidget(t *testing.T) {
 	d := &fakeDisplay{}
 	rm := newRefreshManager(d)
-	c := canvas.New(epd.Width, epd.Height, canvas.Rot90)
+	c := canvas.New(ScreenWidth, ScreenHeight, canvas.Rot90)
 	w := NewLabel("before")
 	w.SetBounds(image.Rect(0, 0, 100, 20))
 	// Establish base first
@@ -442,7 +440,7 @@ func TestRefreshManagerPartialOnDirtyWidget(t *testing.T) {
 func TestRefreshManagerFullOnForced(t *testing.T) {
 	d := &fakeDisplay{}
 	rm := newRefreshManager(d)
-	c := canvas.New(epd.Width, epd.Height, canvas.Rot90)
+	c := canvas.New(ScreenWidth, ScreenHeight, canvas.Rot90)
 	w := NewLabel("test")
 	w.SetBounds(image.Rect(0, 0, 100, 20))
 	if err := rm.RenderWith(c, []Widget{w}, true); err != nil {
@@ -457,7 +455,7 @@ func TestRefreshManagerFullOnForced(t *testing.T) {
 func TestRefreshManagerSkipsPartialWhenBufferUnchanged(t *testing.T) {
 	d := &fakeDisplay{}
 	rm := newRefreshManager(d)
-	c := canvas.New(epd.Width, epd.Height, canvas.Rot90)
+	c := canvas.New(ScreenWidth, ScreenHeight, canvas.Rot90)
 	w := NewLabel("hello")
 	w.SetBounds(image.Rect(0, 0, 100, 20))
 	rm.RenderWith(c, []Widget{w}, true) // establishes base + prevBuf
@@ -533,7 +531,7 @@ func TestNavigatorTouchRoutingCallsHandler(t *testing.T) {
 	nav.Push(s)
 	// logX = 249-pt.Y → want inside [10,60), so 249-pt.Y=35 → pt.Y=214
 	// logY = pt.X    → want inside [10,30), so pt.X=20
-	nav.handleTouch(touch.TouchPoint{X: 20, Y: 214})
+	nav.handleTouch(TouchPoint{X: 20, Y: 214})
 	if !clicked {
 		t.Error("touch should route to button and fire OnClick")
 	}
@@ -549,8 +547,8 @@ func TestNavigatorTouchDebounce(t *testing.T) {
 	s := &Scene{Widgets: []Widget{btn}}
 	nav.Push(s)
 	// Two rapid touches — second should be debounced
-	nav.handleTouch(touch.TouchPoint{X: 50, Y: 50})
-	nav.handleTouch(touch.TouchPoint{X: 50, Y: 50})
+	nav.handleTouch(TouchPoint{X: 50, Y: 50})
+	nav.handleTouch(TouchPoint{X: 50, Y: 50})
 	if count > 1 {
 		t.Errorf("rapid touches should be debounced, got %d clicks", count)
 	}
@@ -605,10 +603,10 @@ func TestNavigator_SwipeLeft_Pops(t *testing.T) {
 	nav.Push(root) //nolint:errcheck
 	nav.Push(sub)  //nolint:errcheck
 
-	events := make(chan touch.TouchEvent, 4)
+	events := make(chan TouchEvent, 4)
 	// Swipe left: physical Y increases (logX = 249-pt.Y → increasing Y = decreasing logX = moving left).
-	events <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 50, Y: 150}}}
-	events <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 50, Y: 200}}}
+	events <- TouchEvent{Points: []TouchPoint{{X: 50, Y: 150}}}
+	events <- TouchEvent{Points: []TouchPoint{{X: 50, Y: 200}}}
 	close(events) // Run exits naturally when channel is closed and drained
 
 	ctx := context.Background()
@@ -630,9 +628,9 @@ func TestNavigator_SlowTap_NotLost(t *testing.T) {
 	btn.SetBounds(image.Rect(0, 0, 250, 122))
 
 	ctx, cancel := context.WithCancel(context.Background())
-	events := make(chan touch.TouchEvent, 1)
+	events := make(chan TouchEvent, 1)
 	// Single tap with no second event — timer should flush it
-	events <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 60, Y: 10}}}
+	events <- TouchEvent{Points: []TouchPoint{{X: 60, Y: 10}}}
 	// Give timer (300ms) time to fire, then cancel
 	go func() {
 		time.Sleep(400 * time.Millisecond)
@@ -696,15 +694,15 @@ func TestNavigatorIdleReset_OnTouch(t *testing.T) {
 	nav := NewNavigatorWithIdle(fd, 500*time.Millisecond) // long enough to never fire in test
 	nav.Push(&Scene{Widgets: []Widget{}}) //nolint:errcheck
 
-	tc := make(chan touch.TouchEvent, 5)
+	tc := make(chan TouchEvent, 5)
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
 	go func() {
 		time.Sleep(30 * time.Millisecond)
-		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 10, Y: 10}}}
+		tc <- TouchEvent{Points: []TouchPoint{{X: 10, Y: 10}}}
 		time.Sleep(30 * time.Millisecond)
-		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 10, Y: 10}}}
+		tc <- TouchEvent{Points: []TouchPoint{{X: 10, Y: 10}}}
 	}()
 
 	nav.Run(ctx, tc)
@@ -723,15 +721,15 @@ func TestNavigator_HScrollable_SwipeLeft(t *testing.T) {
 	hs.SetBounds(image.Rect(0, 0, 200, 100))
 	nav.Push(&Scene{Widgets: []Widget{hs}}) //nolint:errcheck
 
-	tc := make(chan touch.TouchEvent, 10)
+	tc := make(chan TouchEvent, 10)
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
 	go func() {
 		// Swipe left: physical Y increases (logX = 249-pt.Y → increasing Y = decreasing logX = moving left).
-		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 50, Y: 150}}}
+		tc <- TouchEvent{Points: []TouchPoint{{X: 50, Y: 150}}}
 		time.Sleep(50 * time.Millisecond)
-		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 50, Y: 200}}} // ΔY=+50
+		tc <- TouchEvent{Points: []TouchPoint{{X: 50, Y: 200}}} // ΔY=+50
 	}()
 	nav.Run(ctx, tc)
 
@@ -750,20 +748,20 @@ func TestSwipe_NoDoubleScroll(t *testing.T) {
 	hs.SetBounds(image.Rect(0, 0, 200, 100))
 	nav.Push(&Scene{Widgets: []Widget{hs}}) //nolint:errcheck
 
-	tc := make(chan touch.TouchEvent, 10)
+	tc := make(chan TouchEvent, 10)
 	ctx, cancel := context.WithTimeout(context.Background(), 400*time.Millisecond)
 	defer cancel()
 
 	go func() {
 		// Four consecutive events: pairs [1→2] and [3→4] each exceed the 30px threshold.
 		// Without swipeConsumed guard, this would fire ScrollH(-1) twice.
-		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 50, Y: 100}}}
+		tc <- TouchEvent{Points: []TouchPoint{{X: 50, Y: 100}}}
 		time.Sleep(20 * time.Millisecond)
-		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 50, Y: 140}}} // ΔY=+40 → swipe
+		tc <- TouchEvent{Points: []TouchPoint{{X: 50, Y: 140}}} // ΔY=+40 → swipe
 		time.Sleep(20 * time.Millisecond)
-		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 50, Y: 170}}} // still moving
+		tc <- TouchEvent{Points: []TouchPoint{{X: 50, Y: 170}}} // still moving
 		time.Sleep(20 * time.Millisecond)
-		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 50, Y: 210}}} // ΔY=+40 from prev
+		tc <- TouchEvent{Points: []TouchPoint{{X: 50, Y: 210}}} // ΔY=+40 from prev
 	}()
 	nav.Run(ctx, tc)
 
@@ -784,15 +782,15 @@ func TestNavigator_NoHScrollable_SwipeLeft_Pops(t *testing.T) {
 		t.Fatalf("expected depth 2, got %d", nav.Depth())
 	}
 
-	tc := make(chan touch.TouchEvent, 10)
+	tc := make(chan TouchEvent, 10)
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
 	go func() {
 		// Swipe left: physical Y increases (logX = 249-pt.Y → increasing Y = decreasing logX = moving left).
-		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 50, Y: 150}}}
+		tc <- TouchEvent{Points: []TouchPoint{{X: 50, Y: 150}}}
 		time.Sleep(50 * time.Millisecond)
-		tc <- touch.TouchEvent{Points: []touch.TouchPoint{{X: 50, Y: 200}}} // ΔY=+50
+		tc <- TouchEvent{Points: []TouchPoint{{X: 50, Y: 200}}} // ΔY=+50
 	}()
 	nav.Run(ctx, tc)
 
@@ -804,9 +802,9 @@ func TestNavigator_NoHScrollable_SwipeLeft_Pops(t *testing.T) {
 // TestNavigatorHandleTouchPassesLogicalCoordinates verifies that HandleTouch
 // receives logical (rotated) coordinates, not raw GT1151 touch coordinates.
 //
-// GT1151→logical transform (Rot90, epd.Width=122, epd.Height=250):
+// GT1151→logical transform (Rot90, ScreenWidth=122, ScreenHeight=250):
 //
-//	logX = (epd.Height-1) - pt.Y  (GT1151 Y → logical horizontal, inverted)
+//	logX = (ScreenHeight-1) - pt.Y  (GT1151 Y → logical horizontal, inverted)
 //	logY = pt.X                   (GT1151 X → logical vertical, no inversion)
 //
 // ActionSidebar decomposes pt.Y to route a tap to the correct button cell.
@@ -828,7 +826,7 @@ func TestNavigatorHandleTouchPassesLogicalCoordinates(t *testing.T) {
 
 	// We want to hit logical (22, 90) — inside cell 1 (Y=90 > 61).
 	// logX = 249-pt.Y = 22 → pt.Y = 227; logY = pt.X = 90.
-	nav.handleTouch(touch.TouchPoint{X: 90, Y: 227})
+	nav.handleTouch(TouchPoint{X: 90, Y: 227})
 
 	// With the old (wrong) mapping logX=pt.Y=227 → misses sidebar bounds (0..44).
 	// With the correct mapping logX=249-pt.Y=22 → hits sidebar, logY=90 → cell 1.

@@ -3,7 +3,6 @@ package gui
 import (
 	"testing"
 
-	"github.com/oioio-space/oioni/drivers/touch"
 )
 
 func TestShowAlert_PushesScene(t *testing.T) {
@@ -64,7 +63,7 @@ func tapAll(widgets []Widget) {
 		if t, ok := w.(Touchable); ok {
 			r := w.Bounds()
 			if !r.Empty() {
-				pt := touch.TouchPoint{
+				pt := TouchPoint{
 					X: uint16(r.Min.X + r.Dx()/2),
 					Y: uint16(r.Min.Y + r.Dy()/2),
 				}

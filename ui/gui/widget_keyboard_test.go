@@ -4,7 +4,6 @@ import (
 	"image"
 	"testing"
 
-	"github.com/oioio-space/oioni/drivers/touch"
 )
 
 func TestKeyboard_TapFiresOnKey(t *testing.T) {
@@ -17,7 +16,7 @@ func TestKeyboard_TapFiresOnKey(t *testing.T) {
 	// 3 cols, 2 rows, give it 90×40 px
 	kb.SetBounds(image.Rect(0, 0, 90, 40))
 	// Tap at x=15, y=10 → col 0, row 0 → 'A'
-	kb.HandleTouch(touch.TouchPoint{X: 15, Y: 10})
+	kb.HandleTouch(TouchPoint{X: 15, Y: 10})
 	if got != 'A' {
 		t.Errorf("expected 'A', got %q", got)
 	}

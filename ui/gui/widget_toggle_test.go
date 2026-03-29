@@ -4,7 +4,6 @@ import (
 	"image"
 	"testing"
 
-	"github.com/oioio-space/oioni/drivers/touch"
 )
 
 func TestToggle_InitialState(t *testing.T) {
@@ -21,11 +20,11 @@ func TestToggle_InitialState(t *testing.T) {
 func TestToggle_TapFlips(t *testing.T) {
 	tog := NewToggle(false)
 	tog.SetBounds(image.Rect(0, 0, 40, 20))
-	tog.HandleTouch(touch.TouchPoint{X: 20, Y: 10})
+	tog.HandleTouch(TouchPoint{X: 20, Y: 10})
 	if !tog.On {
 		t.Error("expected On=true after tap")
 	}
-	tog.HandleTouch(touch.TouchPoint{X: 20, Y: 10})
+	tog.HandleTouch(TouchPoint{X: 20, Y: 10})
 	if tog.On {
 		t.Error("expected On=false after second tap")
 	}
@@ -37,7 +36,7 @@ func TestToggle_OnChangeCalled(t *testing.T) {
 	tog := NewToggle(false)
 	tog.OnChange = func(on bool) { called = true; got = on }
 	tog.SetBounds(image.Rect(0, 0, 40, 20))
-	tog.HandleTouch(touch.TouchPoint{X: 20, Y: 10})
+	tog.HandleTouch(TouchPoint{X: 20, Y: 10})
 	if !called {
 		t.Error("OnChange not called")
 	}

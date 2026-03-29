@@ -6,7 +6,6 @@ import (
 	"image"
 	"sync"
 
-	"github.com/oioio-space/oioni/drivers/touch"
 	"github.com/oioio-space/oioni/ui/canvas"
 )
 
@@ -64,7 +63,7 @@ func (nsb *NetworkStatusBar) PreferredSize() image.Point { return image.Pt(0, 22
 func (nsb *NetworkStatusBar) MinSize() image.Point       { return image.Pt(0, 22) }
 
 // HandleTouch implements Touchable. Badge tap pushes the interface detail popup.
-func (nsb *NetworkStatusBar) HandleTouch(pt touch.TouchPoint) bool {
+func (nsb *NetworkStatusBar) HandleTouch(pt TouchPoint) bool {
 	p := image.Pt(int(pt.X), int(pt.Y))
 	nsb.mu.Lock()
 	bb := nsb.badgeBounds
